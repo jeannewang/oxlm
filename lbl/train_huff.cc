@@ -44,7 +44,7 @@ typedef vector<WordId> Corpus;
 
 void huffmantree(const variables_map& vm, const ModelData& config);
 
-void print_tree(const tree<string>& tr, tree<string>::pre_order_iterator it, tree<string>::pre_order_iterator end);
+void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end);
 
 void learn(const variables_map& vm, const ModelData& config);
 
@@ -154,13 +154,13 @@ int main(int argc, char **argv) {
 	tr9.set_head("tester");
 	tr9.insert(tr9.begin().begin(), "0");
 	tr9.insert(tr9.begin().begin(), "1");
-	print_tree(tr9, tr9.begin(), tr9.end());
+	//print_tree(tr9, tr9.begin(), tr9.end());
 	
 			tree<string> tr;
 			tree<string>::pre_order_iterator html, body, h1, h3, bh1, mv1;
 
 			cout << "empty tree to begin with:" << endl;
-			print_tree(tr, tr.begin(), tr.end());
+			//print_tree(tr, tr.begin(), tr.end());
 
 			html=tr.insert(tr.begin(), "html");
 			tr.insert(html,"extra");
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
 			cout << " 'more text' is sibling " << tr.index(more_text) << " in its sibling range" << endl;
 
 			cout << "filled tree:" << endl;
-			print_tree(tr, tr.begin(), tr.end());
+			//print_tree(tr, tr.begin(), tr.end());
 
 			// Now test the STL algorithms
 			cout << "result of search for h1 and kasper:" << endl;
@@ -196,7 +196,7 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void print_tree(const tree<string>& tr, tree<string>::pre_order_iterator it, tree<string>::pre_order_iterator end)
+void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end)
 	{
 	if(!tr.is_valid(it)) return;
 	int rootdepth=tr.depth(it);
@@ -236,7 +236,7 @@ void learn(const variables_map& vm, const ModelData& config) {
   while (getline(in, line)) {
     stringstream line_stream(line);
     while (line_stream >> token) {
-			cout<<token<<endl;
+			//cout<<token<<endl;
       training_corpus.push_back(dict.Convert(token));
 		}
     training_corpus.push_back(end_id);
@@ -311,6 +311,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 			//Add the new node to the queue.
 			float priority=(*it1).first+(*it2).first;
 			tree<int> node;
+			node.set_head(-1);
 			tree<int> t1=(*it1).second;
 			tree<int> t2=(*it2).second;
 			node.append_children(node.begin(),t1.begin(),t1.end());
@@ -323,6 +324,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 		}
 		//The remaining node is the root node and the tree is complete.
 		tree<int> huffmanTree=(*priQ.begin()).second;
+		//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
 
   size_t minibatch_counter=0;
   size_t minibatch_size = vm["minibatch-size"].as<int>();
