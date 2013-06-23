@@ -306,7 +306,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 		while(priQ.size() >1){
 			//Get the two nodes of highest priority (lowest probability) from the queue
 			multimap< float,tree<int> >::iterator it1 = priQ.begin();
-			multimap< float,tree<int> >::iterator it2 = ++it1;
+			multimap< float,tree<int> >::iterator it2 = it1++;
 			//Create a new internal node with these two nodes as children and with probability equal to the sum of the two nodes' probabilities.
 			//Add the new node to the queue.
 			float priority=(*it1).first+(*it2).first;
@@ -318,13 +318,13 @@ void learn(const variables_map& vm, const ModelData& config) {
 			node.append_children(node.begin(),t2.begin(),t2.end());
 			priQ.insert( pair<float,tree<int> >( priority, node ));
 			//Remove the two nodes of highest priority (lowest probability) from the queue
-			priQ.erase (it1);
-			priQ.erase (it2);
-			
+			priQ.erase(it1);
+			priQ.erase(it2);
 		}
+		cout<<"finished priQ"<<endl;
 		//The remaining node is the root node and the tree is complete.
 		tree<int> huffmanTree=(*priQ.begin()).second;
-		//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
+		print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
 
   size_t minibatch_counter=0;
   size_t minibatch_size = vm["minibatch-size"].as<int>();
