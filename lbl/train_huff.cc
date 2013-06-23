@@ -209,7 +209,7 @@ void print_tree(const tree<string>& tr, tree<string>::pre_order_iterator it, tre
 		}
 	cout << "-----" << endl;
 	}
-
+/*
 	struct node {
 		tree<int> tr;
 		int freq;
@@ -217,11 +217,11 @@ void print_tree(const tree<string>& tr, tree<string>::pre_order_iterator it, tre
 			return freq > other.freq;
 		}
 };
-	
+*/
 void learn(const variables_map& vm, const ModelData& config) {
   Corpus training_corpus, test_corpus;
 
-	priority_queue< node,vector<int>,greater<int> > q1;
+	//priority_queue< node,vector<int>,greater<int> > q1;
 	multimap<float, tree<int> > priQ;
 
   //////////////////////////////////////////////
@@ -294,23 +294,35 @@ void learn(const variables_map& vm, const ModelData& config) {
     for (int i=0; i<class_word_statistics.rows(); i++)
       for (int j=0; j<class_word_statistics.cols(); j++)
         class_word_statistics(i,j) = unigram(i) + std::abs(gaussian(gen));
-  }
 
 	//create huffman tree using unigram freq
     for (size_t i=0; i<training_indices.size(); i++) {
 			//make new tree node
-			//tree node value training_indices[i]
 			tree<int> node;
 			node.set_head(training_indices[i]);
-			priQ.insert( pair<float,tree<int> >( unigram(training_corpus[i]), node ));
+			priQ.insert( pair<float,tree<int> >( unigram(training_corpus[i]), node )); //lowest probability in front
     }
-		while(priQ.length >1){
-			//Remove the two nodes of highest priority (lowest probability) from the queue
+	}
+		while(priQ.size() >1){
+			//Get the two nodes of highest priority (lowest probability) from the queue
+			multimap< float,tree<int> >::iterator it1 = priQ.begin();
+			multimap< float,tree<int> >::iterator it2 = ++it1;
 			//Create a new internal node with these two nodes as children and with probability equal to the sum of the two nodes' probabilities.
 			//Add the new node to the queue.
+			float priority=(*it1).first+(*it2).first;
+			tree<int> node;
+			tree<int> t1=(*it1).second;
+			tree<int> t2=(*it2).second;
+			node.append_children(node.begin(),t1.begin(),t1.end());
+			node.append_children(node.begin(),t2.begin(),t2.end());
+			priQ.insert( pair<float,tree<int> >( priority, node ));
+			//Remove the two nodes of highest priority (lowest probability) from the queue
+			priQ.erase (it1);
+			priQ.erase (it2);
+			
 		}
 		//The remaining node is the root node and the tree is complete.
-		tree<int> huffmanTree=priQ.pop;
+		tree<int> huffmanTree=(*priQ.begin()).second;
 
   size_t minibatch_counter=0;
   size_t minibatch_size = vm["minibatch-size"].as<int>();
