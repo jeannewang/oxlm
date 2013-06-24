@@ -154,7 +154,15 @@ int main(int argc, char **argv) {
 	tr9.set_head("tester");
 	tr9.insert(tr9.begin().begin(), "0");
 	tr9.insert(tr9.begin().begin(), "1");
+	tr9.insert(tr9.begin().begin(), "3");
 	//print_tree(tr9, tr9.begin(), tr9.end());
+		int leafCount=0;
+		tree<string>::leaf_iterator itl=tr9.begin_leaf();
+		while(itl!=tr9.end_leaf() && tr9.is_valid(itl)) {
+			leafCount++;
+				++itl;
+		}
+		cout<<"leaf count:"<<leafCount<<endl;
 	
 			tree<string> tr;
 			tree<string>::pre_order_iterator html, body, h1, h3, bh1, mv1;
@@ -209,20 +217,11 @@ void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>
 		}
 	cout << "-----" << endl;
 	}
-/*
-	struct node {
-		tree<int> tr;
-		int freq;
-		int operator<(const node& other){ 
-			return freq > other.freq;
-		}
-};
-*/
+
 void learn(const variables_map& vm, const ModelData& config) {
   Corpus training_corpus, test_corpus;
-
-	//priority_queue< node,vector<int>,greater<int> > q1;
 	multimap<float, tree<int> > priQ;
+	tree<int> huffmanTree;
 
   //////////////////////////////////////////////
   // read the training sentences
@@ -259,7 +258,7 @@ void learn(const variables_map& vm, const ModelData& config) {
     test_in.close();
   }
   //////////////////////////////////////////////
-//load model
+  //load model
   Dict classes_dict;
   for (int c=0; c < vm["classes"].as<int>(); ++c)
     classes_dict.Convert("C"+std::to_string(c));
@@ -277,7 +276,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       exit(1);
     }
   }
-//initialize class statistics
+  //initialize class statistics
   vector<size_t> training_indices(training_corpus.size());
   MatrixReal class_word_statistics = MatrixReal::Identity(dict.size(), model.output_types());
   {
@@ -323,8 +322,22 @@ void learn(const variables_map& vm, const ModelData& config) {
 		}
 		cout<<"finished priQ"<<endl;
 		//The remaining node is the root node and the tree is complete.
-		tree<int> huffmanTree=(*priQ.begin()).second;
-		print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
+		huffmanTree=(*priQ.begin()).second;
+		//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into Q matrix
+		
+		//TODO is this off by one?
+		int leafCount=0;
+		tree<int>::leaf_iterator it=huffmanTree.begin_leaf();
+		while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
+			leafCount++;
+				++it;
+		}
+		
+		cout<<"size:"<<huffmanTree.size()<<endl; //37287
+		cout<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
+		
+		
+		//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
 
   size_t minibatch_counter=0;
   size_t minibatch_size = vm["minibatch-size"].as<int>();
