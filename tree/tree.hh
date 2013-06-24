@@ -379,6 +379,8 @@ class tree {
 		int      max_depth(const iterator_base&) const;
 		/// Count the number of children of node at position.
 		static unsigned int number_of_children(const iterator_base&);
+		/// is numChildren==0?
+		static unsigned int isLeaf(const iterator_base&);
 		/// Count the number of siblings (left and right) of node at iterator. Total nodes at this level is +1.
 		unsigned int number_of_siblings(const iterator_base&) const;
 		/// Determine whether node at position is in the subtrees with root in the range.
@@ -1742,6 +1744,12 @@ unsigned int tree<T, tree_node_allocator>::number_of_children(const iterator_bas
 	while((pos=pos->next_sibling))
 		++ret;
 	return ret;
+	}
+
+template <class T, class tree_node_allocator>
+unsigned int tree<T, tree_node_allocator>::isLeaf(const iterator_base& it) 
+	{
+	return (number_of_children(it)==0);
 	}
 
 template <class T, class tree_node_allocator>

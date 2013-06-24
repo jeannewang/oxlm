@@ -49,6 +49,7 @@ void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>
 void learn(const variables_map& vm, const ModelData& config);
 
 Real sgd_update(LogBiLinearModel& model, MatrixReal& class_word_probs, MatrixReal& class_word_statistics,
+								tree<int>& huffmanTree,
                 int start, int end, const Corpus& training_corpus, 
                 const vector<size_t> &indices, Real lambda, Real step_size, Real multinomial_eta);
 
@@ -57,7 +58,7 @@ Real perplexity(const LogBiLinearModel& model, const MatrixReal& class_word_stat
 
 
 int main(int argc, char **argv) {
-  cout << "A class based log-bilinear language model: Copyright 2013 Phil Blunsom, " 
+  cout << "A huffman encoded log-bilinear language model: Copyright 2013 Phil Blunsom, " 
        << REVISION << '\n' << endl;
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -163,6 +164,18 @@ int main(int argc, char **argv) {
 				++itl;
 		}
 		cout<<"leaf count:"<<leafCount<<endl;
+			int internalCount=0;
+			{
+				tree<string>::breadth_first_queued_iterator it=tr9.begin_breadth_first();
+				while(it!=tr9.end_breadth_first() && tr9.is_valid(it)) {
+					if (!tr9.isLeaf(it)){
+						it=tr9.replace (it, "internalCount");
+						internalCount++;
+					}
+					++it;
+				}
+			}
+			cout<<"internalNodes:"<<internalCount<<endl;
 	
 			tree<string> tr;
 			tree<string>::pre_order_iterator html, body, h1, h3, bh1, mv1;
@@ -325,17 +338,30 @@ void learn(const variables_map& vm, const ModelData& config) {
 		huffmanTree=(*priQ.begin()).second;
 		//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into Q matrix
 		
-		//TODO is this off by one?
 		int leafCount=0;
-		tree<int>::leaf_iterator it=huffmanTree.begin_leaf();
-		while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
-			leafCount++;
-				++it;
+		{
+			tree<int>::leaf_iterator it=huffmanTree.begin_leaf();
+			while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
+				leafCount++;
+					++it;
+			}
 		}
 		
-		cout<<"size:"<<huffmanTree.size()<<endl; //37287
+		cout<<"size:"<<huffmanTree.size()<<endl;
 		cout<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
 		
+		int internalCount=0;
+		{
+			tree<int>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
+			while(it!=huffmanTree.end_breadth_first() && huffmanTree.is_valid(it)) {
+				if (!huffmanTree.isLeaf(it)){
+					it=huffmanTree.replace (it, internalCount);
+					internalCount++;
+				}
+				++it;
+			}
+		}
+		cout<<"internalNodes:"<<internalCount<<endl;
 		
 		//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
 
@@ -374,7 +400,7 @@ void learn(const variables_map& vm, const ModelData& config) {
         Real lambda = config.l2_parameter*(end-start)/static_cast<Real>(training_corpus.size()); 
         Real f=0.0;
         Real step_size = vm["step-size"].as<float>(); //* minibatch_size / training_corpus.size();
-        f = sgd_update(model, class_word_probs, class_word_statistics, start, end, training_corpus, 
+        f = sgd_update(model, class_word_probs, class_word_statistics, huffmanTree, start, end, training_corpus, 
                        training_indices, lambda, step_size, vm["multinomial-step-size"].as<float>());
         av_f += f;
 
@@ -409,6 +435,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 
 
 Real sgd_update(LogBiLinearModel& model, MatrixReal& class_word_probs, MatrixReal& class_word_statistics,
+								tree<int>& huffmanTree,
                 int start, int end, const Corpus& training_corpus,
                 const vector<size_t> &training_indices,
                 Real lambda, Real step_size, Real multinomial_eta) {
