@@ -9,8 +9,8 @@
 #include <time.h>
 #include <math.h>
 #include <float.h>
-#include <queue>
 #include <map>
+#include <vector>
 
 // Boost
 #include <boost/program_options/parsers.hpp>
@@ -56,7 +56,8 @@ Real sgd_update(LogBiLinearModel& model, MatrixReal& class_word_probs, MatrixRea
 Real perplexity(const LogBiLinearModel& model, const MatrixReal& class_word_statistics, 
                 const Corpus& test_corpus, int stride=1);
 
-
+double sigmoid(double x);
+							
 int main(int argc, char **argv) {
   cout << "A huffman encoded log-bilinear language model: Copyright 2013 Phil Blunsom, " 
        << REVISION << '\n' << endl;
@@ -311,7 +312,7 @@ void learn(const variables_map& vm, const ModelData& config) {
     for (size_t i=0; i<training_indices.size(); i++) {
 			//make new tree node
 			tree<int> node;
-			node.set_head(training_indices[i]);
+			node.set_head(training_indices[i]); //TODO key is index into vocabulary 
 			priQ.insert( pair<float,tree<int> >( unigram(training_corpus[i]), node )); //lowest probability in front
     }
 	}
@@ -350,6 +351,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 		cout<<"size:"<<huffmanTree.size()<<endl;
 		cout<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
 		
+		//TODO is this necessary?
 		int internalCount=0;
 		{
 			tree<int>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
@@ -358,10 +360,33 @@ void learn(const variables_map& vm, const ModelData& config) {
 					it=huffmanTree.replace (it, internalCount);
 					internalCount++;
 				}
+				else{
+					cout<<"not a leaf"<<endl;
+				}
 				++it;
 			}
 		}
 		cout<<"internalNodes:"<<internalCount<<endl;
+		
+		
+		//store y's in vector of vectors
+		vector< vector<int> > ys(leafCount); //one y vector per word
+		tree<int>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
+		while(itLeaf!=huffmanTree.end_leaf() && huffmanTree.is_valid(itLeaf)) {
+			
+				//TODO:figure out y's for this word
+				int wordIndex=(*itLeaf);
+				tree<int>::iterator_base it;
+				it=itLeaf;
+				while(it!=NULL && it!=tr.end()) {
+					int y=tr.index(it);
+					ys[wordIndex].push_back(y);
+					cout<<(*it)<<" "<<y<<endl;
+					it=tree<int>::parent(it);
+				}
+				++i;
+				++itLeaf;
+		}
 		
 		//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
 
@@ -445,13 +470,17 @@ Real sgd_update(LogBiLinearModel& model, MatrixReal& class_word_probs, MatrixRea
   int word_width = model.config.word_representation_size;
   int context_width = model.config.ngram_order-1;
 
+/*
   // normalise the multinomials
 //  MatrixReal class_word_probs = class_word_statistics;
   for (int i=0; i<class_word_probs.cols(); i++)
     class_word_probs.col(i) = class_word_statistics.col(i) / class_word_statistics.col(i).sum();
+*/
 
   // form matrices of the ngram histories
 //  clock_t cache_start = clock();
+
+	//TODO is this correct? shouldnt it start at start and end at end instance of 0 and instances?
   int instances=end-start;
   vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(instances, word_width)); 
   for (int instance=0; instance < instances; ++instance) {
@@ -482,27 +511,35 @@ Real sgd_update(LogBiLinearModel& model, MatrixReal& class_word_probs, MatrixRea
     WordId w = training_corpus.at(w_i);
 
     VectorReal class_conditional_log_probs = model.R * prediction_vectors.row(instance).transpose() + model.B;
-    Real max_log_prob = class_conditional_log_probs.maxCoeff();
+    
+		/*Real max_log_prob = class_conditional_log_probs.maxCoeff();
     Real class_conditional_probs_log_z = log((class_conditional_log_probs.array() - max_log_prob).exp().sum()) 
                                          + max_log_prob;
     assert(isfinite(class_conditional_probs_log_z));
-
+	
     class_conditional_log_probs.array() -= class_conditional_probs_log_z;
-
+		*/	
+			word_prob = 1;
+			for (int i=0; i<ys[w].size();i++){
+				y=ys[w][i];
+				binary_conditional_prob = sigmoid(class_conditional_log_probs(w))*y+ (1-sigmoid(class_conditional_log_probs(w)))*(1-y);
+				word_prob*=binary_conditional_prob;
+			}
+		
     // model update component
-    class_conditional_probs = class_conditional_log_probs.array().exp();
+    //class_conditional_probs = class_conditional_log_probs.array().exp();
 
     // data update component
-    class_marginal_probs.row(instance) = class_conditional_probs.transpose() * class_word_probs.row(w).array();
+    //class_marginal_probs.row(instance) = class_conditional_probs.transpose() * class_word_probs.row(w).array();
 
-    assert(isfinite(class_marginal_probs.row(instance).sum()));
-    assert(isfinite(log(class_marginal_probs.row(instance).sum())));
-    f += log(class_marginal_probs.row(instance).sum());
+    //assert(isfinite(class_marginal_probs.row(instance).sum()));
+    //assert(isfinite(log(class_marginal_probs.row(instance).sum())));
+    //f += log(class_marginal_probs.row(instance).sum());
+		f +=word_prob;
+    //class_marginal_probs.row(instance).array() /= class_marginal_probs.row(instance).sum();
 
-    class_marginal_probs.row(instance).array() /= class_marginal_probs.row(instance).sum();
-
-    class_probs_delta.row(instance) = class_conditional_probs.transpose() - class_marginal_probs.row(instance).array();
-    weightedRepresentations.row(instance) = class_probs_delta.row(instance) * model.R;
+    //class_probs_delta.row(instance) = class_conditional_probs.transpose() - class_marginal_probs.row(instance).array();
+    //weightedRepresentations.row(instance) = class_probs_delta.row(instance) * model.R;
   }
 
   // do the gradient updates
@@ -515,8 +552,16 @@ Real sgd_update(LogBiLinearModel& model, MatrixReal& class_word_probs, MatrixRea
     model.R -= step_size * class_probs_delta.row(instance).transpose() * prediction_vectors.row(instance);
     model.B -= step_size * class_probs_delta.row(instance);
 
+
+		R_w = 0;
+		for (int i=0; i<ys[w].size();i++){
+			y=ys[w][i];
+			binary_conditional_prob = sigmoid(class_conditional_log_probs(w))*y+ (1-sigmoid(class_conditional_log_probs(w)))*(1-y);
+			R_w += binary_conditional_prob;
+		}
+
     // multinomial online EM update
-    class_word_statistics.row(w) += multinomial_eta * class_marginal_probs.row(instance);
+    //class_word_statistics.row(w) += multinomial_eta * class_marginal_probs.row(instance);
   }
 //  clock_t iteration_time = clock() - iteration_start;
 
@@ -590,4 +635,9 @@ Real perplexity(const LogBiLinearModel& model, const MatrixReal& class_word_stat
   }
   cerr << "\n" << p << " " << -p/tokens << endl;
   return exp(-p/tokens);
+}
+
+double sigmoid(double x){
+	return 1/(1+exp(x));
+	//yes i know it should be -x but this way i dont have to double negate later
 }
