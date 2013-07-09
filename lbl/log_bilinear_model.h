@@ -6,11 +6,14 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <vector>
 
 #include <Eigen/Dense>
 
 #include "corpus/corpus.h"
 #include "lbl/config.h"
+#include "tree/tree.hh"
+
 //#include "lbl/EigenMatrixSerialize.h"
 
 namespace oxlm {
@@ -234,6 +237,16 @@ public:
   MatrixReal F;
   VectorReal FB;
 
+private:
+};
+
+class HuffmanLogBiLinearModel: public LogBiLinearModel {
+public:
+  HuffmanLogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal);
+
+public:
+  tree<int> huffmanTree;
+  std::vector< std::vector<int> > ys;
 private:
 };
 

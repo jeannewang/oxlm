@@ -495,6 +495,7 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
       int w_i = training_instances.at(instance);
       int j = w_i-context_width+i;
 
+			clock_t context_start = clock();
       bool sentence_start = (j<0);
       for (int k=j; !sentence_start && k < w_i; k++)
         if (training_corpus.at(k) == end_id) 
@@ -502,6 +503,8 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
       int v_i = (sentence_start ? start_id : training_corpus.at(j));
 
       g_Q.row(v_i) += context_gradients.row(instance);
+			clock_t context_time = clock() - context_start;
+			cout<<"time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
     }
     model.context_gradient_update(g_C.at(i), context_vectors.at(i), weightedRepresentations);
   }

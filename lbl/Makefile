@@ -1,13 +1,12 @@
-LOCAL_LIBS=${HOME}/packages
-BOOST_INCLUDE=/Users/jeanne/Downloads/boost_1_53_0
-BOOST_LIB=/Users/jeanne/Downloads/boost_1_53_0/stage/lib
-CXXFLAGS = -g -std=c++0x -O3 -fopenmp -fPIC -shared -Wall -I.. -I${BOOST_INCLUDE} -m64 -I/usr/include/eigen3
-LDFLAGS = -g -std=c++0x -O3 -fopenmp  -L${BOOST_LIB} -lboost_program_options -lboost_serialization -lgfortran
+BOOST_LIB=/Users/jeanne/Downloads/boost_1_53_0
+CXXFLAGS = -g -std=c++0x -O3 -fopenmp -fPIC -shared -Wall -I.. -I$(BOOST_LIB) -m64 -I/usr/include/eigen3
+LDFLAGS = -g -std=c++0x -O3 -fopenmp  -L${BOOST_LIB}/stage/lib -lboost_program_options -lboost_serialization -lgfortran
 FFLAGS = -Wall -g -O3  
 CXX=g++
 FC=gfortran
 
 #-----#
+#LOCAL_LIBS=${HOME}/packages
 #cxx add -I${LOCAL_LIBS}/include
 #ldflags add -L${LOCAL_LIBS}/lib64 -L${LOCAL_LIBS}/lib
 #export DYLD_LIBRARY_PATH=/Users/jeanne/Downloads/boost_1_53_0/stage/lib
@@ -17,7 +16,7 @@ CXXFLAGS += -DEIGEN_DONT_PARALLELIZE
 
 local_objs = log_bilinear_model.o lbfgs.o # lbfgs_wrapper.o
 
-all: train_sgd train_clbl train_mlbl train_huff train_factored_sgd
+all: train_sgd train_huff train_factored_sgd
 
 -include makefile.depend
 

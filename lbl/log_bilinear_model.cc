@@ -286,3 +286,10 @@ FactoredOutputLogBiLinearModel::FactoredOutputLogBiLinearModel(const ModelData& 
         F(i,j) = gaussian(gen);
     }
 }
+
+HuffmanLogBiLinearModel::HuffmanLogBiLinearModel(const ModelData& config, 
+                                                               const Dict& labels, 
+                                                               bool diagonal) 
+: LogBiLinearModel(config, labels, diagonal) {
+	//TODO: update save and load model to include tree
+}
