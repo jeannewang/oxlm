@@ -1,0 +1,73 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath}
+
+\begin{document}
+
+\begin{align*}
+\begin{aligned}
+&\Theta_i=C_i \\
+&\sigma(x)=\frac{1}{1+exp(-x)}\\
+&\hat{r} = \sum^{n-1}_{i=1} \Theta_i r_{wi} \\
+&P_{\Theta}^h(w) = \prod_{i} P^h_{\Theta}(d_i|q_i) \\
+&P^h_{\Theta}(d_i=y|q_i)= \sigma(\hat{r}^Tq_i+b_i)y + (1-\sigma(\hat{r}^Tq_i+b_i))(1-y)
+&\intertext{where y=1 or 0}
+&h_i=-\hat{r}^Tq_i-b_i \\
+\end{aligned}
+\end{align*}
+
+\begin{align*}
+\begin{aligned}
+&\frac{\partial}{\partial q_i}ln(P_{\Theta}^h(w))=\sum_{i \in huffman\;tree\;branch} \frac{\partial}{\partial q_i}ln(\sigma(h_i)y + (1-\sigma(h_i))(1-y))\\
+&=\sum_i \frac{\partial}{\partial q_i} ln(\sigma(h_i)y + (1-\sigma(h_i))(1-y))\\
+&=\sum_i \frac{\partial}{\partial q_i}  ln(\frac{y}{1+exp(-h_i)} + (1-\frac{1}{1+exp(-h_i)})(1-y))\\
+&=\sum_i \frac{\partial}{\partial q_i}  ln(\frac{y}{1+exp(-h_i)} +\frac{exp(-h_i)(1-y)}{1+exp(-h_i)})\\
+&=\sum_i \frac{\partial}{\partial q_i}  ln(\frac{y+exp(-h_i)(1-y)}{1+exp(-h_i)})\\
+&=\sum_i \frac{\partial}{\partial q_i}  ln(\frac{y+exp(-h_i)-yexp(-h_i)}{1+exp(-h_i)})\\
+&=\sum_i \frac{\partial}{\partial q_i}  ln(\frac{y+exp(-h_i)(1-y)}{1+exp(-h_i)})\\
+&=\sum_i \frac{\partial}{\partial q_i}  ln( y+exp(-h_i)(1-y) )- ln( 1+exp(-h_i) )\\
+&=\sum_i  \frac{1}{ y+exp(-h_i)(1-y)} ( exp(-h_i)(1-y) ) (sum(\hat{r})) - \frac{1}{ 1+exp(-h_i) }(exp(-h_i))(sum(\hat{r}))\\
+\end{aligned}
+\end{align*}
+
+\begin{align*}
+\begin{aligned}
+&\frac{\partial}{\partial r_{wi}}ln(P_{\Theta}^h(w))=\sum_i \frac{\partial}{\partial r_{wi}}ln(\sigma(h_i)y + (1-\sigma(h_i))(1-y))\\
+&=\sum_i \frac{\partial}{\partial r_{wi}}  ln( y+exp(-h_i)(1-y) )- ln( 1+exp(-h_i) )\\
+&=\sum_i  \frac{1}{ y+exp(-h_i)(1-y)} ( exp(-h_i)(1-y) ) (\hat{c}^Tqi) - \frac{1}{ 1+exp(-h_i) }(exp(-h_i))(\hat{c}^Tqi) \\
+&\hat{c}(j)= \sum^{n-1}_{i=1} sum(\Theta_i(j,:))
+\intertext{$\hat{c}$ = $\hat{c}(j)$ for every entry j, $sum(\Theta_i(j,:))$ = sum of row j of $\Theta_i$}
+\end{aligned}
+\end{align*}
+
+\begin{align*}
+\begin{aligned}
+&\frac{\partial}{\partial \Theta_i}ln(P_{\Theta}^h(w))=\sum_i \frac{\partial}{\partial \Theta_i}ln(\sigma(h_i)y + (1-\sigma(h_i))(1-y))\\
+&=\sum_i \frac{\partial}{\partial \Theta_i}  ln( y+exp(-h_i)(1-y) )- ln( 1+exp(-h_i) )\\
+&=\sum_i  \frac{1}{ y+exp(-h_i)(1-y)} ( exp(-h_i)(1-y) ) (\hat{z}^Tqi) - \frac{1}{ 1+exp(-h_i) }(exp(-h_i))(\hat{z}^Tqi) \\
+&\hat{z}(j)= \sum^{n-1}_{i=1} sum(r_{wi})
+\intertext{$\hat{z}$ = $\hat{z}(j)$ for every entry j}
+\end{aligned}
+\end{align*}
+\\
+\begin{align*}
+\begin{aligned}
+&\frac{\partial}{\partial b_i}ln(P_{\Theta}^h(w))=\sum_i \frac{\partial}{\partial b_i}ln(\sigma(h_i)y + (1-\sigma(h_i))(1-y))\\
+&=\sum_i \frac{\partial}{\partial b_i}  ln( y+exp(-h_i)(1-y) )- ln( 1+exp(-h_i) )\\
+&=\sum_i  \frac{1}{ y+exp(-h_i)(1-y)} ( exp(-h_i)(1-y) )- \frac{1}{ 1+exp(-h_i) }(exp(-h_i))\\
+\end{aligned}
+\end{align*}
+\\
+Update per iteration:
+\begin{align*}
+\begin{aligned}
+&q_i:=q_i - \alpha \frac{\partial}{\partial q_i}ln(P_{\Theta}^h(w))\\
+&b_i:=b_i - \alpha \frac{\partial}{\partial b_i}ln(P_{\Theta}^h(w))\\
+&r_{wi}:=r_{wi} - \alpha \frac{\partial}{\partial r_{wi}}ln(P_{\Theta}^h(w))\\
+&\Theta_{i}:=\Theta_{i} - \alpha \frac{\partial}{\partial \Theta_i}ln(P_{\Theta}^h(w))\\
+\end{aligned}
+\end{align*}
+\\What about words that aren't in the training set so aren't in the huffman coding tree?
+\\negated score function is energy function. want to minimize energy function $h_i$?
+
+\end{document}
