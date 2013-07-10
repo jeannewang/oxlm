@@ -249,7 +249,7 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 	}
 	cout<<"internalNodes:"<<internalCount<<endl;
 	
-	print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end(),dict);
+	//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end(),dict);
 	return huffmanTree;
 }
 
@@ -300,10 +300,6 @@ void learn(const variables_map& vm, const ModelData& config) {
   }
   in.close();
   //////////////////////////////////////////////
-
-	for (int index=0;index<dict.size();index++){
-		cout << index<<" "<< dict.Convert(index) << endl << flush;
-	}
   
   //////////////////////////////////////////////
   // read the test sentences
@@ -354,7 +350,6 @@ void learn(const variables_map& vm, const ModelData& config) {
 	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
 	model.ys = pairYs.first;
 	model.ysInternalIndex = pairYs.second;
-	
 
 
   VectorReal adaGrad = VectorReal::Zero(model.num_weights());
@@ -552,11 +547,11 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
     WordId w = training_corpus.at(w_i);
 
 		VectorReal word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + model.B;
-		double word_prob = 1;
+		double word_prob = 0;
 		for (int i=model.ys[w].size()-1; i>=0;i--){
 			int y=model.ys[w][i];
 			double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
-			word_prob*=binary_conditional_prob;
+			word_prob+=log(binary_conditional_prob);
 		}
 		
 		weightedRepresentations.row(instance) = model.R.row(w);
@@ -565,7 +560,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			break;
 		}
     assert(isfinite(word_prob));
-		f +=word_prob;
+		f +=exp(word_prob);
 
     // do the gradient updates:
     //   data contributions: 
@@ -573,7 +568,8 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		//TODO make sure the correct row is being updated
 		for (int i=model.ys[w].size()-1; i>=0;i--){
 			int y=model.ys[w][i];
-			double h=word_conditional_scores(w);
+			int yIndex=model.ysInternalIndex[w][i];
+			double h=word_conditional_scores(yIndex);
 			VectorReal rhat=prediction_vectors.row(instance);
 			double exph=exp(h);
 			double left=1/(y+exph*(1-y))*exph*(1-y);
@@ -582,8 +578,8 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			VectorReal R_gradient_contribution = left*rhat - right*rhat;
 			double B_gradient_contribution = left - right;
 			//TODO update the word node in Q?, then update internal node in R?
-			g_R.row(w) += R_gradient_contribution;
-			g_B(w) += B_gradient_contribution;
+			g_R.row(yIndex) += R_gradient_contribution;
+			g_B(yIndex) += B_gradient_contribution;
 		}
 
 		//TODO cache floating point operations 
@@ -619,10 +615,12 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 					sentence_start=true;
 					
 			int v_i = (sentence_start ? start_id : training_corpus.at(j));
-			double h=word_conditional_scores(v_i);
 			
-			for (int k=model.ys[v_i].size()-1; k>=0;k--	){
+			
+			for ( int k=model.ys[v_i].size()-1; k>=0;k--	){
 				int y=model.ys[v_i][k];
+				int yIndex=model.ysInternalIndex[v_i][k];
+				double h=word_conditional_scores(yIndex);
 				double exph=exp(h);
 				double left=1/(y+exph*(1-y))*exph*(1-y);
 				double right=sigmoid(h)*exph;
@@ -678,11 +676,11 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
       }
 
 			VectorReal word_conditional_scores = model.R * prediction_vector + model.B;
-			double word_prob = 1;
+			double word_prob = 0;
 			for (int i=model.ys[w].size()-1; i>=0;i--){
 				int y=model.ys[w][i];
 				double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
-				word_prob*=binary_conditional_prob;
+				word_prob+=log(binary_conditional_prob);
 			}
 			p += word_prob;
 
