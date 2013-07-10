@@ -83,7 +83,7 @@ public:
   LogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal=false);
 //  LogBiLinearModel(const LogBiLinearModel& model);
 
-  virtual ~LogBiLinearModel() { delete [] m_data; }
+virtual ~LogBiLinearModel() { std::cout<<"in super"<<std::endl<<std::flush; delete [] m_data; }
 
   //int output_types() const { return config.classes > 0 ? config.classes : m_labels.size(); }
   int output_types() const { return m_labels.size(); }
@@ -243,10 +243,11 @@ private:
 class HuffmanLogBiLinearModel: public LogBiLinearModel {
 public:
   HuffmanLogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal);
-
 public:
   tree<int> huffmanTree;
   std::vector< std::vector<int> > ys;
+  std::vector< std::vector<int> > ysInternalIndex;
+
 private:
 };
 

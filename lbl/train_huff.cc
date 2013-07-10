@@ -47,9 +47,9 @@ using namespace Eigen;
 typedef vector<WordId> Sentence;
 typedef vector<WordId> Corpus;
 
-void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end);
-tree<int> createHuffmanTree(vector<size_t>& training_indices, Corpus& training_corpus, VectorReal& unigram);
-vector< vector<int> > getYs(tree<int>& huffmanTree);
+void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end,Dict& dict);
+tree<int> createHuffmanTree(VectorReal& unigram, Dict& dict);
+pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<int>& huffmanTree);
 double sigmoid(double x);
 
 void learn(const variables_map& vm, const ModelData& config);
@@ -73,8 +73,6 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 
 
 Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride=1);
-void freq_bin_type(const std::string &corpus, int num_classes, std::vector<int>& classes, Dict& dict, VectorReal& class_bias);
-
 
 int main(int argc, char **argv) {
   cout << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
@@ -173,7 +171,7 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end)
+void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end,Dict& dict)
 	{
 	if(!tr.is_valid(it)) return;
 	int rootdepth=tr.depth(it);
@@ -181,24 +179,30 @@ void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>
 	while(it!=end) {
 		for(int i=0; i<tr.depth(it)-rootdepth; ++i) 
 			cout << "  ";
-		cout << (*it) << endl << flush;
+		if (tr.isLeaf(it)){
+			int index=(*it);
+			cout << index<<" "<< dict.Convert(index) << endl << flush;
+		}
+		else{
+			cout << (*it) << endl << flush;
+		}
 		++it;
 		}
 	cout << "-----" << endl;
 	}
 
-tree<int> createHuffmanTree(vector<size_t>& training_indices, Corpus& training_corpus, VectorReal& unigram){
+tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 	multimap<float, tree<int> > priQ;
 	tree<int> huffmanTree;
 	//create huffman tree using unigram freq
-   for (size_t i=0; i<training_indices.size(); i++) {
+   for (size_t i=0; i<dict.size(); i++) {
 		//make new tree node
 		tree<int> node;
-		node.set_head(training_indices[i]); //TODO key is index into vocabulary 
-		priQ.insert( pair<float,tree<int> >( unigram(training_corpus[i]), node )); //lowest probability in front
+		node.set_head(i); // key is index into vocabulary 
+		priQ.insert( pair<float,tree<int> >( unigram(i), node )); //lowest probability in front
    }
 	while(priQ.size() >1){
-		//Get the two nodes of highest priority (lowest probability) from the queue
+		//Get the two nodes of highest priority (lowest frequency) from the queue
 		multimap< float,tree<int> >::iterator it1 = priQ.begin();
 		multimap< float,tree<int> >::iterator it2 = it1++;
 		//Create a new internal node with these two nodes as children and with probability equal to the sum of the two nodes' probabilities.
@@ -232,14 +236,28 @@ tree<int> createHuffmanTree(vector<size_t>& training_indices, Corpus& training_c
 	cout<<"size:"<<huffmanTree.size()<<endl;
 	cout<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
 
-	//print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end());
+	int internalCount=0;
+	{
+		tree<int>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
+		while(it!=huffmanTree.end_breadth_first() && huffmanTree.is_valid(it)) {
+			if (!huffmanTree.isLeaf(it)){
+				it=huffmanTree.replace (it, internalCount);
+				internalCount++;
+			}
+			++it;
+		}
+	}
+	cout<<"internalNodes:"<<internalCount<<endl;
+	
+	print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end(),dict);
 	return huffmanTree;
 }
 
-vector< vector<int> > getYs(tree<int>& huffmanTree){
+pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<int>& huffmanTree){
 		//store y's in vector of vectors
 		int leafCount=(huffmanTree.size()/2)+1;
 		vector< vector<int> > ys(leafCount); //one y vector per word
+		vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
 		tree<int>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
 		while(itLeaf!=huffmanTree.end_leaf() && huffmanTree.is_valid(itLeaf)) {
 			
@@ -247,15 +265,20 @@ vector< vector<int> > getYs(tree<int>& huffmanTree){
 				int wordIndex=(*itLeaf);
 				tree<int>::leaf_iterator it;
 				it=itLeaf;
-				while(it!=NULL && it!=huffmanTree.end()) {
+				while(it!=NULL && it!=huffmanTree.end() && huffmanTree.is_valid(it)) {
 					int y=huffmanTree.index(it);
-					ys[wordIndex].push_back(y);
+					ys[wordIndex].push_back(y); //order is from the leaf to the root
+					int nodeIndex=(*it);
+					internalIndex[wordIndex].push_back(nodeIndex);
 					//cout<<(*it)<<" "<<y<<endl;
 					it=tree<int>::parent(it);
 				}
 				++itLeaf;
 		}
-		return ys;
+		pair< vector< vector<int> >, vector< vector<int> > > returnValue;
+		returnValue.first=ys;
+		returnValue.second=internalIndex;
+		return returnValue;
 }
 
 void learn(const variables_map& vm, const ModelData& config) {
@@ -277,6 +300,10 @@ void learn(const variables_map& vm, const ModelData& config) {
   }
   in.close();
   //////////////////////////////////////////////
+
+	for (int index=0;index<dict.size();index++){
+		cout << index<<" "<< dict.Convert(index) << endl << flush;
+	}
   
   //////////////////////////////////////////////
   // read the test sentences
@@ -321,9 +348,14 @@ void learn(const variables_map& vm, const ModelData& config) {
   model.unigram /= model.unigram.sum();
 
 	//create huffmantree from vocabulary
-	model.huffmanTree = createHuffmanTree(training_indices, training_corpus, model.unigram);
+	model.huffmanTree = createHuffmanTree(model.unigram,model.label_set());
+
 	//get binary decisions per word in huffmantree
-	model.ys = getYs(model.huffmanTree);
+	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
+	model.ys = pairYs.first;
+	model.ysInternalIndex = pairYs.second;
+	
+
 
   VectorReal adaGrad = VectorReal::Zero(model.num_weights());
   VectorReal global_gradient(model.num_weights());
@@ -450,6 +482,7 @@ void learn(const variables_map& vm, const ModelData& config) {
     std::ofstream f(vm["model-out"].as<string>().c_str());
     boost::archive::text_oarchive ar(f);
     ar << model;
+    cout << "Finished writing trained model to " << vm["model-out"].as<string>() << endl;
   }
 }
 
@@ -486,7 +519,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   int context_width = model.config.ngram_order-1;
 
   // form matrices of the ngram histories
-//  clock_t cache_start = clock();
+  clock_t cache_start = clock();
   int instances=training_instances.size();
   vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(instances, word_width)); 
   for (int instance=0; instance < instances; ++instance) {
@@ -505,7 +538,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   for (int i=0; i<context_width; ++i)
     prediction_vectors += model.context_product(i, context_vectors.at(i));
 
-//  clock_t cache_time = clock() - cache_start;
+  clock_t cache_time = clock() - cache_start;
 
   // the weighted sum of word representations
  	// huffman tree indexes this
@@ -513,14 +546,14 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 
   // calculate the function and gradient for each ngram
 
-//  clock_t iteration_start = clock();
+  clock_t iteration_start = clock();
   for (int instance=0; instance < instances; instance++) {
     int w_i = training_instances.at(instance);
     WordId w = training_corpus.at(w_i);
 
 		VectorReal word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + model.B;
 		double word_prob = 1;
-		for (int i=0; i<model.ys[w].size();i++){
+		for (int i=model.ys[w].size()-1; i>=0;i--){
 			int y=model.ys[w][i];
 			double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
 			word_prob*=binary_conditional_prob;
@@ -538,27 +571,39 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
     //   data contributions: 
 
 		//TODO make sure the correct row is being updated
-		//TODO check if the gradient should be added or subtracted.
-		for (int i=0; i<model.ys[w].size();i++){
+		for (int i=model.ys[w].size()-1; i>=0;i--){
 			int y=model.ys[w][i];
 			double h=word_conditional_scores(w);
 			VectorReal rhat=prediction_vectors.row(instance);
+			double exph=exp(h);
+			double left=1/(y+exph*(1-y))*exph*(1-y);
+			double right=sigmoid(h)*exph;
 			
-			VectorReal R_gradient_contribution = 1/(y+exp(h)*(1-y))*exp(h)*(1-y)*rhat - sigmoid(h)*exp(h)*rhat;
-			double B_gradient_contribution = 1/(y+exp(h)*(1-y))*exp(h)*(1-y) - sigmoid(h)*exp(h);
+			VectorReal R_gradient_contribution = left*rhat - right*rhat;
+			double B_gradient_contribution = left - right;
+			//TODO update the word node in Q?, then update internal node in R?
 			g_R.row(w) += R_gradient_contribution;
 			g_B(w) += B_gradient_contribution;
 		}
 
+		//TODO cache floating point operations 
+		//TODO run on small data set
+		//TODO check gradient using tangent and small points 
+			//http://ufldl.stanford.edu/wiki/index.php/Gradient_checking_and_advanced_optimization
+		//TODO check if word probs sum to 1
+		//TODO check if negative log f is negative
+		//TODO check which bit is slowest
+		
   }
 	//cout<<endl<<"done with r and b gradient update"<<endl;
-//  clock_t iteration_time = clock() - iteration_start;
+  clock_t iteration_time = clock() - iteration_start;
 
-//  clock_t context_start = clock();
+  clock_t context_start = clock();
 	MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
 	for (int i=0; i<context_width; ++i) {
-		//context_gradients = context_vectors.at(i).transpose() * model.C.at(i).asDiagonal(); // C(i)^T*weightedRepresentations
 		context_gradients = model.context_product(i, weightedRepresentations, true); // R * C.at(i).transpose();
+		//context_gradients = model.C.at(i) * model.R.transpose(); // C.at(i)*R^T
+		
 		
 		MatrixReal context_gradient = MatrixReal::Zero(word_width, word_width);
 		context_gradient = context_vectors.at(i).transpose() * weightedRepresentations; //Q^T*R
@@ -566,7 +611,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		for (int instance=0; instance < instances; ++instance) {
 			int w_i = training_instances.at(instance);
 			int j = w_i-context_width+i;
-			VectorReal word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + model.B;
+			VectorReal word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + model.B; //slow
 			
 			bool sentence_start = (j<0);
 			for (int k=j; !sentence_start && k < w_i; k++)
@@ -575,16 +620,23 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 					
 			int v_i = (sentence_start ? start_id : training_corpus.at(j));
 			double h=word_conditional_scores(v_i);
-			for (int k=0; k<model.ys[v_i].size();k++){
+			
+			for (int k=model.ys[v_i].size()-1; k>=0;k--	){
 				int y=model.ys[v_i][k];
-				g_Q.row(v_i) += 1/(y+exp(h)*(1-y))*exp(h)*(1-y)*context_gradients.row(instance) - sigmoid(h)*exp(h)*context_gradients.row(instance);
-				g_C.at(i) += 1/(y+exp(h)*(1-y))*exp(h)*(1-y)*context_gradient - sigmoid(h)*exp(h)*context_gradient;
+				double exph=exp(h);
+				double left=1/(y+exph*(1-y))*exph*(1-y);
+				double right=sigmoid(h)*exph;
+				//TODO is it really this v_i row or is it the row of the internal node?
+				g_Q.row(v_i) += left*context_gradients.row(instance) - right*context_gradients.row(instance);
+				g_C.at(i) += left*context_gradient - right*context_gradient; //slow
 			}
 		}
 	}
 	//cout<<endl<<"done with c and q gradient update"<<endl;
 	
-//  clock_t context_time = clock() - context_start;
+  clock_t context_time = clock() - context_start;
+
+	cout<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
 
   return f;
 }
@@ -627,7 +679,7 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 
 			VectorReal word_conditional_scores = model.R * prediction_vector + model.B;
 			double word_prob = 1;
-			for (int i=0; i<model.ys[w].size();i++){
+			for (int i=model.ys[w].size()-1; i>=0;i--){
 				int y=model.ys[w][i];
 				double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
 				word_prob*=binary_conditional_prob;
@@ -644,63 +696,6 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
   }
 
   return p;
-}
-
-
-void freq_bin_type(const std::string &corpus, int num_classes, vector<int>& classes, Dict& dict, VectorReal& class_bias) {
-  ifstream in(corpus.c_str());
-  string line, token;
-
-  map<string,int> tmp_dict;
-  vector< pair<string,int> > counts;
-  int sum=0, eos_sum=0;
-  string eos = "</s>";
-
-  while (getline(in, line)) {
-    stringstream line_stream(line);
-    while (line_stream >> token) {
-      if (token == eos) continue;
-      int w_id = tmp_dict.insert(make_pair(token,tmp_dict.size())).first->second;
-      assert (w_id <= int(counts.size()));
-      if (w_id == int(counts.size())) counts.push_back( make_pair(token, 1) );
-      else                            counts[w_id].second += 1;
-      sum++;
-    }
-    eos_sum++; 
-  }
-
-  sort(counts.begin(), counts.end(), 
-       [](const pair<string,int>& a, const pair<string,int>& b) -> bool { return a.second > b.second; });
-
-  classes.clear();
-  classes.push_back(0);
-  classes.push_back(2);
-
-  class_bias(0) = log(eos_sum);
-
-  int bin_size = sum / (num_classes-1);
-  int mass=0;
-  for (int i=0; i < int(counts.size()); ++i) {
-    WordId id = dict.Convert(counts.at(i).first);
-    if ((mass += counts.at(i).second) > bin_size) {
-//      cerr << " " << classes.size() << ": " << classes.back() << " " << mass << endl;
-      bin_size = (sum -= mass) / (num_classes - classes.size());
-
-      class_bias(classes.size()-1) = log(mass);
-      classes.push_back(id+1);
-
-      mass=0;
-    }
-  }
-  if (classes.back() != int(dict.size()))
-    classes.push_back(dict.size());
-
-//  cerr << " " << classes.size() << ": " << classes.back() << " " << mass << endl;
-  class_bias.array() -= log(eos_sum+sum);
-
-  cerr << "Binned " << dict.size() << " types in " << classes.size()-1 << " classes with an average of " 
-       << float(dict.size()) / float(classes.size()-1) << " types per bin." << endl; 
-  in.close();
 }
 
 double sigmoid(double x){

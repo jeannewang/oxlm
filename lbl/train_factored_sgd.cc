@@ -208,7 +208,9 @@ void learn(const variables_map& vm, const ModelData& config) {
         WordId w = dict.Convert(token, true);
         if (w < 0) {
           cerr << token << " " << w << endl;
-          assert(!"Unknown word found in test corpus.");
+          //TODO: put this back
+					//assert(!"Unknown word found in test corpus.");
+					w=0;
         }
         test_corpus.push_back(w);
       }
@@ -422,7 +424,7 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
   int context_width = model.config.ngram_order-1;
 
   // form matrices of the ngram histories
-//  clock_t cache_start = clock();
+  clock_t cache_start = clock();
   int instances=training_instances.size();
   vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(instances, word_width)); 
   for (int instance=0; instance < instances; ++instance) {
@@ -441,13 +443,13 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
   for (int i=0; i<context_width; ++i)
     prediction_vectors += model.context_product(i, context_vectors.at(i));
 
-//  clock_t cache_time = clock() - cache_start;
+  clock_t cache_time = clock() - cache_start;
 
   // the weighted sum of word representations
   MatrixReal weightedRepresentations = MatrixReal::Zero(instances, word_width);
 
   // calculate the function and gradient for each ngram
-//  clock_t iteration_start = clock();
+  clock_t iteration_start = clock();
   for (int instance=0; instance < instances; instance++) {
     int w_i = training_instances.at(instance);
     WordId w = training_corpus.at(w_i);
@@ -484,9 +486,9 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
     g_FB += class_conditional_probs;
     g_B.segment(c_start, c_end-c_start) += word_conditional_probs;
   }
-//  clock_t iteration_time = clock() - iteration_start;
+  clock_t iteration_time = clock() - iteration_start;
 
-//  clock_t context_start = clock();
+  clock_t context_start = clock();
   MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
   for (int i=0; i<context_width; ++i) {
     context_gradients = model.context_product(i, weightedRepresentations, true); // weightedRepresentations*C(i)^T
@@ -495,7 +497,7 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
       int w_i = training_instances.at(instance);
       int j = w_i-context_width+i;
 
-			clock_t context_start = clock();
+			// clock_t context_start = clock();
       bool sentence_start = (j<0);
       for (int k=j; !sentence_start && k < w_i; k++)
         if (training_corpus.at(k) == end_id) 
@@ -503,12 +505,14 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
       int v_i = (sentence_start ? start_id : training_corpus.at(j));
 
       g_Q.row(v_i) += context_gradients.row(instance);
-			clock_t context_time = clock() - context_start;
-			cout<<"time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+			// clock_t context_time = clock() - context_start;
+			// 		cout<<"time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
     }
     model.context_gradient_update(g_C.at(i), context_vectors.at(i), weightedRepresentations);
   }
-//  clock_t context_time = clock() - context_start;
+  clock_t context_time = clock() - context_start;
+	cout<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+
 
   return f;
 }

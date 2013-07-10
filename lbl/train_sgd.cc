@@ -457,7 +457,7 @@ Real sgd_gradient(LogBiLinearModel& model,
   int context_width = model.config.ngram_order-1;
 
   // form matrices of the ngram histories
-//  clock_t cache_start = clock();
+  //clock_t cache_start = clock();
   int instances=training_instances.size();
   vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(instances, word_width)); 
   for (int instance=0; instance < instances; ++instance) {
@@ -516,7 +516,7 @@ Real sgd_gradient(LogBiLinearModel& model,
   
       
 
-//  clock_t cache_time = clock() - cache_start;
+  //clock_t cache_time = clock() - cache_start;
 
   // calculate the weight sum of word representations
   MatrixReal weightedRepresentations = MatrixReal::Zero(instances, word_width);
@@ -526,7 +526,7 @@ Real sgd_gradient(LogBiLinearModel& model,
   // calculate the function and gradient for each ngram
   Real unnormalised_llh=0;
 
-//  clock_t iteration_start = clock();
+  clock_t iteration_start = clock();
   vector<Real> pos_probs(instances);
   vector<Real> neg_probs; 
   neg_probs.reserve(instances*(training_instances.empty() ? 0 : training_instances.front().noise_words.size()));
@@ -598,10 +598,10 @@ Real sgd_gradient(LogBiLinearModel& model,
       g_B(v_noise) += negW;
     }
   }
-//  clock_t iteration_time = clock() - iteration_start;
+  //clock_t iteration_time = clock() - iteration_start;
   //weightedRepresentations.array() = weightedRepresentations.array()*drop_out.array();
 
-//  clock_t context_start = clock();
+  //clock_t context_start = clock();
   MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
   MatrixReal rev_context_gradients;
   if (pseudo) rev_context_gradients = MatrixReal::Zero(word_width, instances);
@@ -635,7 +635,7 @@ Real sgd_gradient(LogBiLinearModel& model,
     if (pseudo)
       model.context_gradient_update(g_C.at(i), rev_weightedRepresentations, rev_context_vectors.at(i));
   }
-//  clock_t context_time = clock() - context_start;
+  //clock_t context_time = clock() - context_start;
 
   return f;
 }
