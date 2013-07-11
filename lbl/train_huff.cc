@@ -510,7 +510,6 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   WordId start_id = model.label_set().Convert("<s>");
   WordId end_id = model.label_set().Convert("</s>");
 
-	int num_words = model.labels();
   int word_width = model.config.word_representation_size;
   int context_width = model.config.ngram_order-1;
 
@@ -533,8 +532,12 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   MatrixReal prediction_vectors = MatrixReal::Zero(instances, word_width);
   for (int i=0; i<context_width; ++i)
     prediction_vectors += model.context_product(i, context_vectors.at(i));
-
-  clock_t cache_time = clock() - cache_start;
+	
+	//MatrixReal word_conditional_scores = (model.R * prediction_vectors.transpose()).transpose();
+	MatrixReal word_conditional_scores = prediction_vectors * (model.R).transpose(); //slow
+	word_conditional_scores.rowwise() += model.B.transpose();
+  
+clock_t cache_time = clock() - cache_start;
 
   // the weighted sum of word representations
  	// huffman tree indexes this
@@ -547,11 +550,15 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
     int w_i = training_instances.at(instance);
     WordId w = training_corpus.at(w_i);
 
-		VectorReal word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + model.B;
+		// VectorReal wc = model.R * prediction_vectors.row(instance).transpose() + model.B;
+		// cout<<"equal?"<<((wc.transpose().array())==(word_conditional_scores.row(instance).array()))<<endl;
+		// cout<<(wc.transpose())<<endl<<endl;
+		// cout<<(word_conditional_scores.row(instance))<<endl;
+		
 		double word_prob = 0;
 		for (int i=model.ys[w].size()-1; i>=0;i--){
 			int y=model.ys[w][i];
-			double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
+			double binary_conditional_prob = sigmoid(word_conditional_scores(instance,w))*y+ (1-sigmoid(word_conditional_scores(instance,w)))*(1-y);
 			word_prob+=log(binary_conditional_prob);
 		}
 		
@@ -570,7 +577,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		for (int i=model.ys[w].size()-1; i>=0;i--){
 			int y=model.ys[w][i];
 			int yIndex=model.ysInternalIndex[w][i];
-			double h=word_conditional_scores(yIndex);
+			double h=word_conditional_scores(instance,yIndex);
 			VectorReal rhat=prediction_vectors.row(instance);
 			double exph=exp(h);
 			double left=1/(y+exph*(1-y))*exph*(1-y);
@@ -621,12 +628,6 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   clock_t iteration_time = clock() - iteration_start;
 
   clock_t context_start = clock();
-
-	//cache word_conditional_scores per instance
-	MatrixReal word_conditional_scores = MatrixReal::Zero(instances, num_words); 		
-	for (int instance=0; instance < instances; ++instance) {
-		word_conditional_scores.row(instance) = model.R * prediction_vectors.row(instance).transpose() + model.B; //slow
-	}
 
 	MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
 	for (int i=0; i<context_width; ++i) {
