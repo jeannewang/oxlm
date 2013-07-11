@@ -293,3 +293,5 @@ HuffmanLogBiLinearModel::HuffmanLogBiLinearModel(const ModelData& config,
 : LogBiLinearModel(config, labels, diagonal) {
 	//TODO: update save and load model to include tree
 }
+
+

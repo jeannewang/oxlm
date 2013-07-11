@@ -359,6 +359,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       cerr << endl;
 
       Real iteration_time = (clock()-iteration_start) / (Real)CLOCKS_PER_SEC;
+			Real perplexity_start = clock();
       if (vm.count("test-set")) {
         Real local_pp = perplexity(model, test_corpus, 1);
 
@@ -369,10 +370,11 @@ void learn(const variables_map& vm, const ModelData& config) {
 
       #pragma omp master
       {
+				Real perplexity_time = (clock()-perplexity_start) / (Real)CLOCKS_PER_SEC;
         pp = exp(-pp/test_corpus.size());
         cerr << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
         if (vm.count("test-set")) {
-          cerr << ", Test Perplexity = " << pp; 
+          cerr << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
         }
         if (vm.count("mixture"))
           cerr << ", Mixture weights = " << softMax(model.M).transpose();
