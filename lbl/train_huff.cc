@@ -510,6 +510,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   WordId start_id = model.label_set().Convert("<s>");
   WordId end_id = model.label_set().Convert("</s>");
 
+	int num_words = model.labels();
   int word_width = model.config.word_representation_size;
   int context_width = model.config.ngram_order-1;
 
@@ -577,9 +578,34 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			
 			VectorReal R_gradient_contribution = left*rhat - right*rhat;
 			double B_gradient_contribution = left - right;
-			//TODO update the word node in Q?, then update internal node in R?
+			
 			g_R.row(yIndex) += R_gradient_contribution;
 			g_B(yIndex) += B_gradient_contribution;
+			
+			//TODO: check
+			
+			// double epsilon=0.00001;
+			// 		
+			// 		MatrixReal Bcopy = model.B;
+			// 		Bcopy(yIndex) += epsilon;
+			// 		word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + Bcopy;
+			// 		
+			// 		double word_prob_plus = 0;
+			// 		for (int i=model.ys[w].size()-1; i>=0;i--){
+			// 			int y=model.ys[w][i];
+			// 			double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
+			// 			word_prob_plus+=log(binary_conditional_prob);
+			// 		}
+			// 		Bcopy(yIndex) -= (2*epsilon);
+			// 		word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + Bcopy;
+			// 		double word_prob_minus = 0;
+			// 		for (int i=model.ys[w].size()-1; i>=0;i--){
+			// 			int y=model.ys[w][i];
+			// 			double binary_conditional_prob = sigmoid(word_conditional_scores(w))*y+ (1-sigmoid(word_conditional_scores(w)))*(1-y);
+			// 			word_prob_minus+=log(binary_conditional_prob);
+			// 		}
+			// 		cout <<"B_gradient_contribution: "<<B_gradient_contribution<< " B Real gradient:"<<(word_prob_plus-word_prob_minus)/(2.0*epsilon)<<endl;
+			// 		
 		}
 
 		//TODO cache floating point operations 
@@ -595,20 +621,27 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   clock_t iteration_time = clock() - iteration_start;
 
   clock_t context_start = clock();
+
+	//cache word_conditional_scores per instance
+	MatrixReal word_conditional_scores = MatrixReal::Zero(instances, num_words); 		
+	for (int instance=0; instance < instances; ++instance) {
+		word_conditional_scores.row(instance) = model.R * prediction_vectors.row(instance).transpose() + model.B; //slow
+	}
+
 	MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
 	for (int i=0; i<context_width; ++i) {
 		context_gradients = model.context_product(i, weightedRepresentations, true); // R * C.at(i).transpose();
 		//context_gradients = model.C.at(i) * model.R.transpose(); // C.at(i)*R^T
 		
-		
 		MatrixReal context_gradient = MatrixReal::Zero(word_width, word_width);
 		context_gradient = context_vectors.at(i).transpose() * weightedRepresentations; //Q^T*R
 		
+		double leftAccC=0;
+		double rightAccC=0;
 		for (int instance=0; instance < instances; ++instance) {
 			int w_i = training_instances.at(instance);
 			int j = w_i-context_width+i;
-			VectorReal word_conditional_scores = model.R * prediction_vectors.row(instance).transpose() + model.B; //slow
-			
+										
 			bool sentence_start = (j<0);
 			for (int k=j; !sentence_start && k < w_i; k++)
 				if (training_corpus.at(k) == end_id) 
@@ -616,19 +649,23 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 					
 			int v_i = (sentence_start ? start_id : training_corpus.at(j));
 			
-			
+			double leftAcc=0;
+			double rightAcc=0;
 			for ( int k=model.ys[v_i].size()-1; k>=0;k--	){
 				int y=model.ys[v_i][k];
 				int yIndex=model.ysInternalIndex[v_i][k];
-				double h=word_conditional_scores(yIndex);
+				double h=word_conditional_scores(instance,yIndex);
 				double exph=exp(h);
 				double left=1/(y+exph*(1-y))*exph*(1-y);
 				double right=sigmoid(h)*exph;
-				//TODO is it really this v_i row or is it the row of the internal node?
-				g_Q.row(v_i) += left*context_gradients.row(instance) - right*context_gradients.row(instance);
-				g_C.at(i) += left*context_gradient - right*context_gradient; //slow
+				leftAcc+=left;
+				rightAcc+=right;
 			}
+			g_Q.row(v_i) += leftAcc*context_gradients.row(instance) - rightAcc*context_gradients.row(instance);
+			leftAccC+=leftAcc;
+			rightAccC+=rightAcc;
 		}
+		g_C.at(i) += leftAccC*context_gradient - rightAccC*context_gradient; 
 	}
 	//cout<<endl<<"done with c and q gradient update"<<endl;
 	
