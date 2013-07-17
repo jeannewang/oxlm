@@ -359,6 +359,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       cerr << endl;
 
       Real iteration_time = (clock()-iteration_start) / (Real)CLOCKS_PER_SEC;
+			Real perplexity_start = clock();
 //      test_tokens = min((int)test_corpus.size(), vm["test-tokens"].as<int>());
       if (vm.count("test-set")) {
         Real local_pp=0;
@@ -376,10 +377,11 @@ void learn(const variables_map& vm, const ModelData& config) {
 
       #pragma omp master
       {
+				Real perplexity_time = (clock()-perplexity_start) / (Real)CLOCKS_PER_SEC;
         pp = exp(-pp/test_corpus.size());
         cerr << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
         if (vm.count("test-set")) {
-          cerr << ", Test Perplexity = " << pp; 
+          cerr << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
         }
         if (vm.count("mixture"))
           cerr << ", Mixture weights = " << softMax(model.M).transpose();
@@ -457,7 +459,7 @@ Real sgd_gradient(LogBiLinearModel& model,
   int context_width = model.config.ngram_order-1;
 
   // form matrices of the ngram histories
-  //clock_t cache_start = clock();
+  clock_t cache_start = clock();
   int instances=training_instances.size();
   vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(instances, word_width)); 
   for (int instance=0; instance < instances; ++instance) {
@@ -516,7 +518,7 @@ Real sgd_gradient(LogBiLinearModel& model,
   
       
 
-  //clock_t cache_time = clock() - cache_start;
+  clock_t cache_time = clock() - cache_start;
 
   // calculate the weight sum of word representations
   MatrixReal weightedRepresentations = MatrixReal::Zero(instances, word_width);
@@ -598,10 +600,10 @@ Real sgd_gradient(LogBiLinearModel& model,
       g_B(v_noise) += negW;
     }
   }
-  //clock_t iteration_time = clock() - iteration_start;
+  clock_t iteration_time = clock() - iteration_start;
   //weightedRepresentations.array() = weightedRepresentations.array()*drop_out.array();
 
-  //clock_t context_start = clock();
+  clock_t context_start = clock();
   MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
   MatrixReal rev_context_gradients;
   if (pseudo) rev_context_gradients = MatrixReal::Zero(word_width, instances);
@@ -635,7 +637,9 @@ Real sgd_gradient(LogBiLinearModel& model,
     if (pseudo)
       model.context_gradient_update(g_C.at(i), rev_weightedRepresentations, rev_context_vectors.at(i));
   }
-  //clock_t context_time = clock() - context_start;
+  clock_t context_time = clock() - context_start;
+	cout<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+
 
   return f;
 }
