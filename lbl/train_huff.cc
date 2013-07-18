@@ -534,6 +534,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
       sentence_start = (sentence_start || j<0 || training_corpus.at(j) == end_id);
       int v_i = (sentence_start ? start_id : training_corpus.at(j));
       context_vectors.at(i).row(instance) = model.Q.row(v_i);
+			
     }
   }
   MatrixReal prediction_vectors = MatrixReal::Zero(instances, word_width);
@@ -691,18 +692,18 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 	//fill context vectors
   vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(test_corpus.size(), word_width)); 
   for (int instance=0; instance < test_corpus.size(); ++instance) {
-    const TrainingInstance& t = test_corpus.at(instance);
+    const TrainingInstance& t = instance;
     int context_start = t - context_width;
-		cout<<endl<<"Context for "<<model.label_str(t)<<":";
+		//cout<<endl<<context_width<<" Context for "<<model.label_str(test_corpus.at(t))<<":";
     bool sentence_start = (t==0);
     for (int i=context_width-1; i>=0; --i) {
       int j=context_start+i;
       sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
       int v_i = (sentence_start ? start_id : test_corpus.at(j));
       context_vectors.at(i).row(instance) = model.Q.row(v_i);
-			cout<<model.label_str(v_i)<<", ";
+			//cout<<model.label_str(v_i)<<" "<<v_i<<", ";
     }
-		cout<<endl;
+		//cout<<endl;
   }
 
 	//create prediction vectors
