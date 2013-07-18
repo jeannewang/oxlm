@@ -263,7 +263,7 @@ pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<int>& huffmanTre
 		tree<int>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
 		while(itLeaf!=huffmanTree.end_leaf() && huffmanTree.is_valid(itLeaf)) {
 			
-				//TODO:figure out y's for this word
+				//figure out y's for this word
 				int wordIndex=(*itLeaf);
 				tree<int>::leaf_iterator it;
 				it=itLeaf;
@@ -539,10 +539,6 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   MatrixReal prediction_vectors = MatrixReal::Zero(instances, word_width);
   for (int i=0; i<context_width; ++i)
     prediction_vectors += model.context_product(i, context_vectors.at(i));
-	
-	//MatrixReal word_conditional_scores = (model.R * prediction_vectors.transpose()).transpose();
-	// MatrixReal word_conditional_scores = prediction_vectors * (model.R).transpose(); //slow
-	// word_conditional_scores.rowwise() += model.B.transpose();
   
 clock_t cache_time = clock() - cache_start;
 
@@ -564,19 +560,15 @@ clock_t cache_time = clock() - cache_start;
 			int y=model.ys[w][i];
 			int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
 			VectorReal word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
-			double binary_conditional_prob;
-			if (y==1){
-				binary_conditional_prob = log_sigmoid(word_conditional_score(0)); //log(sigmoid(x))
-			}
-			else if (y==0){
-				binary_conditional_prob = log_one_minus_sigmoid(word_conditional_score(0)); //log(1-sigmoid(x))
-			}
+			double wcs = word_conditional_score(0);
+			double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			
 			if (!isfinite(binary_conditional_prob))
-				cout<<"binary_conditional_prob:"<<binary_conditional_prob<<" wcs:"<<word_conditional_score(0)<<endl;
+				cout<<"binary_conditional_prob:"<<binary_conditional_prob<<" wcs:"<<wcs<<endl;
+				
 			word_prob+=binary_conditional_prob;
 		}
-		if (!isfinite(word_prob))
-			cout<<"word_prob:"<<word_prob<<endl;
+
     assert(isfinite(word_prob));
 		f +=exp(word_prob);
 
@@ -591,25 +583,13 @@ clock_t cache_time = clock() - cache_start;
 			VectorReal word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
 			double h=word_conditional_score(0);
 			VectorReal rhat=prediction_vectors.row(instance);
-			// double exph=exp(-h);
-			// double left=exph*(1-y)/(y+exph*(1-y));
-			// double right=sigmoid(h)*exph;
-			//VectorReal R_gradient_contribution = (left+right)*-rhat;
-			double gradientScalar=0;
-			if (y==1){
-				gradientScalar=sigmoid(h);
-			}
-			else if (y==0){
-				gradientScalar=sigmoid(-h)-1;
-			}
+			double gradientScalar=((y==1) ? sigmoid(h) : sigmoid(-h)-1 ) ;
+
 			VectorReal R_gradient_contribution = gradientScalar*rhat;
 			double B_gradient_contribution = gradientScalar;
 			
-			g_R.row(yIndex) += R_gradient_contribution; //TODO should this be multiplication in log space?
+			g_R.row(yIndex) += R_gradient_contribution; //TODO is this multiplication in log space?
 			g_B(yIndex) += B_gradient_contribution;
-			
-			//B_gradient_contribution = (1-sigmoid(-h))*y+(sigmoid(-h)-1)*(1-y);
-			//B_gradient_contribution = (sigmoid(h))*y+(sigmoid(-h)-1)*(1-y);
 			
 			//TODO: check if gradient is okay using finite difference
 			
@@ -681,16 +661,7 @@ clock_t cache_time = clock() - cache_start;
 				int yIndex=model.ysInternalIndex[v_i][k+1];
 				word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
 				double h=word_conditional_score(0);
-				//double exph=exp(-h);
-				//double left=exph*(1-y)/(y+exph*(1-y));
-				//double right=sigmoid(h)*exph;
-				double gradientScalar=0;
-				if (y==1){
-					gradientScalar=sigmoid(h);
-				}
-				else if (y==0){
-					gradientScalar=sigmoid(-h)-1;
-				}
+				double gradientScalar=((y==1) ? sigmoid(h) : sigmoid(-h)-1 ) ;
 				acc+=gradientScalar;
 			}
 			g_Q.row(v_i) += acc*context_gradients.row(instance);
@@ -786,13 +757,8 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 				int y=model.ys[w][i];
 				int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
 				VectorReal word_conditional_score = prediction_vectors.row(s) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
-				double binary_conditional_prob;
-				if (y==1){
-					binary_conditional_prob = log_sigmoid(word_conditional_score(0)); //log(sigmoid(x))
-				}
-				else if (y==0){
-					binary_conditional_prob = log_one_minus_sigmoid(word_conditional_score(0)); //log(1-sigmoid(x))
-				}
+				double wcs=word_conditional_score(0);
+				double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
 				
 				if(abs((exp(log_sigmoid(word_conditional_score(0)))+exp(log_one_minus_sigmoid(word_conditional_score(0))))-1)>=.001)
 					cout<<"one?"<<(exp(log_sigmoid(word_conditional_score(0)))+exp(log_one_minus_sigmoid(word_conditional_score(0))))<<endl;	
