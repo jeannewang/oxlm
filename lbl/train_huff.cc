@@ -693,14 +693,16 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
   for (int instance=0; instance < test_corpus.size(); ++instance) {
     const TrainingInstance& t = test_corpus.at(instance);
     int context_start = t - context_width;
-
+		cout<<endl<<"Context for "<<model.label_str(t)<<":";
     bool sentence_start = (t==0);
     for (int i=context_width-1; i>=0; --i) {
       int j=context_start+i;
       sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
       int v_i = (sentence_start ? start_id : test_corpus.at(j));
       context_vectors.at(i).row(instance) = model.Q.row(v_i);
+			cout<<model.label_str(v_i)<<", ";
     }
+		cout<<endl;
   }
 
 	//create prediction vectors
