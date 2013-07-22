@@ -560,7 +560,7 @@ clock_t cache_time = clock() - cache_start;
 		for (int i=model.ys[w].size()-2; i>=0;i--){
 			int y=model.ys[w][i];
 			int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
-			VectorReal word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
+			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
 			double wcs = word_conditional_score(0);
 			double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
 			
@@ -584,40 +584,46 @@ clock_t cache_time = clock() - cache_start;
 			VectorReal word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
 			double h=word_conditional_score(0);
 			VectorReal rhat=prediction_vectors.row(instance);
-			double gradientScalar=((y==1) ? sigmoid(h) : sigmoid(-h)-1 ) ;
+			double exph=exp(-h);
+			double left=1/(y+exph*(1-y))*exph*(1-y);
+			double right=sigmoid(h)*exph;
 
-			VectorReal R_gradient_contribution = gradientScalar*rhat;
+			double gradientScalar=((y==1) ? (sigmoid(h)) : (sigmoid(-h)-1) ) ; //TODO fix GRADIENTddddddd deal with underflow
+			VectorReal R_gradient_contribution = (left-right)*rhat;
 			double B_gradient_contribution = gradientScalar;
-			
-			g_R.row(yIndex) += R_gradient_contribution; //TODO is this multiplication in log space?
-			g_B(yIndex) += B_gradient_contribution;
+			//double B_gradient_contribution = left - right;
 			
 			//TODO: check if gradient is okay using finite difference
 			
-			// double epsilon=0.0001;
-			// 			MatrixReal Bcopy = model.B;
-			// 			Bcopy(yIndex)+=epsilon;
-			// 			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			// 			double binary_conditional_prob_plus;
-			// 			if (y==1){
-			// 				binary_conditional_prob_plus = log_sigmoid(word_conditional_score(0)); //log(sigmoid(x))
-			// 			}
-			// 			else if (y==0){
-			// 				binary_conditional_prob_plus = log_one_minus_sigmoid(word_conditional_score(0)); //log(1-sigmoid(x))
-			// 			}
-			// 			
-			// 			Bcopy(yIndex)-=2*epsilon;
-			// 			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			// 			double binary_conditional_prob_minus;
-			// 			if (y==1){
-			// 				binary_conditional_prob_minus = log_sigmoid(word_conditional_score(0)); //log(sigmoid(x))
-			// 			}
-			// 			else if (y==0){
-			// 				binary_conditional_prob_minus = log_one_minus_sigmoid(word_conditional_score(0)); //log(1-sigmoid(x))
-			// 			}
-			// 			
-			// 			cout <<"y:"<<y<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon)<<endl;
-			
+			// double epsilon=0.001;
+			// MatrixReal Bcopy = model.B;
+			// Bcopy(yIndex)+=epsilon;
+			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+			// double wcs=word_conditional_score(0);
+			// double binary_conditional_prob_plus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			// 
+			// Bcopy(yIndex)-=2*epsilon;
+			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+			// wcs=word_conditional_score(0);
+			// double binary_conditional_prob_minus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			//  			cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
+			// 
+			// MatrixReal Rcopy = model.R;
+			// Rcopy.row(yIndex).array()+=epsilon;
+			// word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
+			// wcs=word_conditional_score(0);
+			// binary_conditional_prob_plus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			// 
+			// Rcopy(yIndex)-=2*epsilon;
+			// word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
+			// wcs=word_conditional_score(0);
+			// binary_conditional_prob_minus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			// double finiteDiffR=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			//  			cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
+			// 
+			g_R.row(yIndex) += R_gradient_contribution; //TODO is this multiplication in log space?
+			g_B(yIndex) += B_gradient_contribution;
 		}
 
 		//TODO cache floating point operations 
@@ -647,28 +653,30 @@ clock_t cache_time = clock() - cache_start;
 		for (int instance=0; instance < instances; ++instance) {
 			int w_i = training_instances.at(instance);
 			int j = w_i-context_width+i;
-										
+
 			bool sentence_start = (j<0);
 			for (int k=j; !sentence_start && k < w_i; k++)
 				if (training_corpus.at(k) == end_id) 
 					sentence_start=true;
-					
+
 			int v_i = (sentence_start ? start_id : training_corpus.at(j));
-			
+
 			double acc=0;
 			VectorReal word_conditional_score;
-			for ( int k=model.ys[v_i].size()-2; k>=0;k--){
+			for ( int k=model.ys[v_i].size()-1; k>0;k--	){
 				int y=model.ys[v_i][k];
-				int yIndex=model.ysInternalIndex[v_i][k+1];
+				int yIndex=model.ysInternalIndex[v_i][k];
 				word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
 				double h=word_conditional_score(0);
-				double gradientScalar=((y==1) ? sigmoid(h) : sigmoid(-h)-1 ) ;
-				acc+=gradientScalar;
+				double exph=exp(-h);
+				double left=1/(y+exph*(1-y))*exph*(1-y);
+				double right=sigmoid(h)*exph;
+				acc+=left-right;
 			}
 			g_Q.row(v_i) += acc*context_gradients.row(instance);
 			accC+=acc;
 		}
-		g_C.at(i) += accC*context_word_product; 
+		g_C.at(i) += accC*context_word_product;
 	}
 	
   clock_t context_time = clock() - context_start;
@@ -787,7 +795,10 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 }
 
 double sigmoid(double x){
-	return 1/(1+exp(-x));
+	if (x > 0)
+		return 1.0/(1+exp(-x));
+		
+	return 1.0-(1.0/(1+exp(x)));
 }
 
 double log_sigmoid(double x) {
