@@ -218,7 +218,9 @@ void learn(const variables_map& vm, const ModelData& config) {
         WordId w = dict.Convert(token, true);
         if (w < 0) {
           cerr << token << " " << w << endl;
-          assert(!"Unknown word found in test corpus.");
+          w=0;
+					//TODO: deal with unknown words
+          //assert(!"Unknown word found in test corpus.");
         }
         test_corpus.push_back(w);
       }
@@ -817,7 +819,7 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
 */
   {
     #pragma omp master
-    cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens";
+    cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
 
     VectorReal prediction_vector(word_width);
     size_t thread_num = omp_get_thread_num();
@@ -842,6 +844,8 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
       w_p -= log_z;
       log_z_sum += log_z;
       p += w_p;
+			//cout<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(w_p)<<endl;
+
 
       #pragma omp master
       if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }

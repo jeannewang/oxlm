@@ -128,7 +128,9 @@ void LogBiLinearModelApproximateZ::train(const MatrixReal& contexts, const Vecto
   m_b_approx = VectorReal(approx_vectors); // Z x 1
   { // z_approx initialisation
     std::random_device rd;
-    std::mt19937 gen(rd());
+    //std::mt19937 gen(rd());
+		unsigned seed=2;
+    std::mt19937 gen(seed);
     std::normal_distribution<Real> gaussian(0,0.1);
     for (int j=0; j<m_z_approx.cols(); j++) {
       m_b_approx(j) = gaussian(gen);
