@@ -576,22 +576,22 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			
 			//TODO: check if gradient is okay using finite difference
 			
-			double epsilon=0.0001;
-			double wcs;
-			double binary_conditional_prob_plus, binary_conditional_prob_minus;
-			
-			MatrixReal Bcopy = model.B;
-			Bcopy(yIndex)+=epsilon;
-			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			wcs=word_conditional_score(0);
-			binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			
-			Bcopy(yIndex)-=2*epsilon;
-			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			wcs=word_conditional_score(0);
-			binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
+			// double epsilon=0.0001;
+			// double wcs;
+			// double binary_conditional_prob_plus, binary_conditional_prob_minus;
+			// 
+			// MatrixReal Bcopy = model.B;
+			// Bcopy(yIndex)+=epsilon;
+			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+			// wcs=word_conditional_score(0);
+			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 
+			// Bcopy(yIndex)-=2*epsilon;
+			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+			// wcs=word_conditional_score(0);
+			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			// cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
 		
 			// MatrixReal Rcopy = model.R;
 			// Rcopy.row(yIndex).array()+=epsilon;
