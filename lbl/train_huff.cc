@@ -559,7 +559,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		// compute objective function
 		VectorReal prediction_vector = prediction_vectors.row(instance);
 		double log_word_prob = getLogWordProb(model,prediction_vector,w);
-		f +=log_word_prob;
+		f -=log_word_prob;
 
     // do the gradient updates:
 		for (int i=model.ys[w].size()-2; i>=0;i--){
@@ -576,33 +576,33 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			
 			//TODO: check if gradient is okay using finite difference
 			
-			double epsilon=0.001;
+			double epsilon=0.0001;
 			double wcs;
 			double binary_conditional_prob_plus, binary_conditional_prob_minus;
 			
-			// MatrixReal Bcopy = model.B;
-			// Bcopy(yIndex)+=epsilon;
-			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_plus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
-			// 
-			// Bcopy(yIndex)-=2*epsilon;
-			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_minus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
-			// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			// cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
+			MatrixReal Bcopy = model.B;
+			Bcopy(yIndex)+=epsilon;
+			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+			wcs=word_conditional_score(0);
+			binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			
+			Bcopy(yIndex)-=2*epsilon;
+			word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+			wcs=word_conditional_score(0);
+			binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
 		
 			// MatrixReal Rcopy = model.R;
 			// Rcopy.row(yIndex).array()+=epsilon;
 			// word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
 			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_plus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
 			// 
 			// Rcopy(yIndex)-=2*epsilon;
 			// word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
 			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_minus = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
 			// double finiteDiffR=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
 			//cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
 			 
@@ -663,6 +663,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 				int yIndex=model.ysInternalIndex[v_i][k];
 				word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
 				double h=word_conditional_score(0);
+				//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
 				double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
 				acc+=gradientScalar;
 			}
