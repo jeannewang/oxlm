@@ -78,7 +78,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride=1);
 
 int main(int argc, char **argv) {
-  cout << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
+  cerr << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
        << REVISION << '\n' << endl;
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
   ///////////////////////////////////////////////////////////////////////////////////////
 
   if (vm.count("help")) { 
-    cout << cmdline_options << "\n"; 
+    cerr << cmdline_options << "\n"; 
     return 1; 
   }
 
@@ -153,19 +153,19 @@ int main(int argc, char **argv) {
   config.verbose = vm.count("verbose");
   config.classes = vm["classes"].as<int>();
 
-  cerr << "################################" << endl;
-  cerr << "# Config Summary" << endl;
-  cerr << "# order = " << vm["order"].as<int>() << endl;
+  cout << "################################" << endl;
+  cout << "# Config Summary" << endl;
+  cout << "# order = " << vm["order"].as<int>() << endl;
   if (vm.count("model-in"))
-    cerr << "# model-in = " << vm["model-in"].as<string>() << endl;
-  cerr << "# model-out = " << vm["model-out"].as<string>() << endl;
-  cerr << "# input = " << vm["input"].as<string>() << endl;
-  cerr << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
-  cerr << "# lambda = " << vm["lambda"].as<float>() << endl;
-  cerr << "# iterations = " << vm["iterations"].as<int>() << endl;
-  cerr << "# threads = " << vm["threads"].as<int>() << endl;
-  cerr << "# classes = " << config.classes << endl;
-  cerr << "################################" << endl;
+    cout << "# model-in = " << vm["model-in"].as<string>() << endl;
+  cout << "# model-out = " << vm["model-out"].as<string>() << endl;
+  cout << "# input = " << vm["input"].as<string>() << endl;
+  cout << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
+  cout << "# lambda = " << vm["lambda"].as<float>() << endl;
+  cout << "# iterations = " << vm["iterations"].as<int>() << endl;
+  cout << "# threads = " << vm["threads"].as<int>() << endl;
+  cout << "# classes = " << config.classes << endl;
+  cout << "################################" << endl;
 
   omp_set_num_threads(config.threads);
 
@@ -178,20 +178,20 @@ void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>
 	{
 	if(!tr.is_valid(it)) return;
 	int rootdepth=tr.depth(it);
-	cout << "-----" << endl;
+	cerr << "-----" << endl;
 	while(it!=end) {
 		for(int i=0; i<tr.depth(it)-rootdepth; ++i) 
-			cout << "  ";
+			cerr << "  ";
 		if (tr.isLeaf(it)){
 			int index=(*it);
-			cout << index<<" "<< dict.Convert(index) << endl << flush;
+			cerr << index<<" "<< dict.Convert(index) << endl << flush;
 		}
 		else{
-			cout << (*it) << endl << flush;
+			cerr << (*it) << endl << flush;
 		}
 		++it;
 		}
-	cout << "-----" << endl;
+	cerr << "-----" << endl;
 	}
 
 tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
@@ -222,7 +222,7 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 		priQ.erase(it1);
 		priQ.erase(it2);
 	}
-	cout<<"finished priQ"<<endl;
+	cerr<<"finished priQ"<<endl;
 	//The remaining node is the root node and the tree is complete.
 	huffmanTree=(*priQ.begin()).second;
 	//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into Q matrix
@@ -236,8 +236,8 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 		}
 	}
 
-	cout<<"size:"<<huffmanTree.size()<<endl;
-	cout<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
+	cerr<<"size:"<<huffmanTree.size()<<endl;
+	cerr<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
 
 	int internalCount=0;
 	{
@@ -250,7 +250,7 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 			++it;
 		}
 	}
-	cout<<"internalNodes:"<<internalCount<<endl;
+	cerr<<"internalNodes:"<<internalCount<<endl;
 	
 	print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end(),dict);
 	return huffmanTree;
@@ -273,7 +273,7 @@ pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<int>& huffmanTre
 					ys[wordIndex].push_back(y); //order is from the leaf to the root
 					int nodeIndex=(*it);
 					internalIndex[wordIndex].push_back(nodeIndex);
-					//cout<<(*it)<<" "<<y<<endl;
+					//cerr<<(*it)<<" "<<y<<endl;
 					it=tree<int>::parent(it);
 				}
 				++itLeaf;
@@ -315,7 +315,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       while (line_stream >> token) {
         WordId w = dict.Convert(token, true);
         if (w < 0) {
-          cerr << token << " " << w << endl;
+          cout << token << " " << w << endl;
 					w=0;
 					//TODO: deal with unknown words
           //assert(!"Unknown word found in test corpus.");
@@ -326,7 +326,7 @@ void learn(const variables_map& vm, const ModelData& config) {
     }
     test_in.close();
   }
-	cout<<"TEST-SET SIZE:"<<test_corpus.size()<<endl;
+	cerr<<"TEST-SET SIZE:"<<test_corpus.size()<<endl;
   //////////////////////////////////////////////
 
   //LogBiLinearModel model(config, dict, vm.count("diagonal-contexts"));
@@ -405,7 +405,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       {
         av_f=0.0;
         pp=0.0;
-        cout << "Iteration " << iteration << ": "; cout.flush();
+        cerr << "Iteration " << iteration << ": "; cerr.flush();
 
         if (vm.count("randomise"))
           std::random_shuffle(training_indices.begin(), training_indices.end());
@@ -444,14 +444,14 @@ void learn(const variables_map& vm, const ModelData& config) {
           // regularisation
           if (lambda > 0) av_f += (0.5*lambda*model.l2_gradient_update(step_size*lambda));
 
-          if (minibatch_counter % 100 == 0) { cerr << "."; cout.flush(); }
+          if (minibatch_counter % 100 == 0) { cout << "."; cerr.flush(); }
         }
 
         //start += (minibatch_size*omp_get_num_threads());
         start += minibatch_size;
       }
       #pragma omp master
-      cerr << endl;
+      cout << endl;
 
       Real iteration_time = (clock()-iteration_start) / (Real)CLOCKS_PER_SEC;
 			Real perplexity_start = clock();
@@ -467,25 +467,25 @@ void learn(const variables_map& vm, const ModelData& config) {
       {
 				Real perplexity_time = (clock()-perplexity_start) / (Real)CLOCKS_PER_SEC;
 				
-				cout<<"pp:"<<pp<<endl;
+				cerr<<"pp:"<<pp<<endl;
         pp = exp(-pp/test_corpus.size());
-        cerr << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
+        cout << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
         if (vm.count("test-set")) {
-          cerr << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
+          cout << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
         }
         if (vm.count("mixture"))
-          cerr << ", Mixture weights = " << softMax(model.M).transpose();
-        cerr << " |" << endl << endl;
+          cout << ", Mixture weights = " << softMax(model.M).transpose();
+        cout << " |" << endl << endl;
       }
     }
   }
 
   if (vm.count("model-out")) {
-    cout << "Writing trained model to " << vm["model-out"].as<string>() << endl;
+    cerr << "Writing trained model to " << vm["model-out"].as<string>() << endl;
     std::ofstream f(vm["model-out"].as<string>().c_str());
     boost::archive::text_oarchive ar(f);
     ar << model;
-    cout << "Finished writing trained model to " << vm["model-out"].as<string>() << endl;
+    cerr << "Finished writing trained model to " << vm["model-out"].as<string>() << endl;
   }
 }
 
@@ -576,22 +576,22 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			
 			//TODO: check if gradient is okay using finite difference
 			
-			// double epsilon=0.0001;
-			// double wcs;
-			// double binary_conditional_prob_plus, binary_conditional_prob_minus;
-			// 
-			// MatrixReal Bcopy = model.B;
-			// Bcopy(yIndex)+=epsilon;
-			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 
-			// Bcopy(yIndex)-=2*epsilon;
-			// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			// cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
+				double epsilon=0.0001;
+				double wcs;
+				double binary_conditional_prob_plus, binary_conditional_prob_minus;
+				
+				// MatrixReal Bcopy = model.B;
+				// Bcopy(yIndex)+=epsilon;
+				// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+				// wcs=word_conditional_score(0);
+				// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+				// 
+				// Bcopy(yIndex)-=2*epsilon;
+				// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
+				// wcs=word_conditional_score(0);
+				// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+				// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
 		
 			// MatrixReal Rcopy = model.R;
 			// Rcopy.row(yIndex).array()+=epsilon;
@@ -604,11 +604,11 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			// wcs=word_conditional_score(0);
 			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
 			// double finiteDiffR=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			//cout <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
+			//cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
 			 
 			
 			g_R.row(yIndex) += R_gradient_contribution;
-			g_B(yIndex) += B_gradient_contribution;
+			//g_B(yIndex) += B_gradient_contribution;
 		}
 
 		//TODO cache floating point operations 
@@ -631,7 +631,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		
 		
   }
-	//cout<<endl<<"done with r and b gradient update"<<endl;
+	//cerr<<endl<<"done with r and b gradient update"<<endl;
   clock_t iteration_time = clock() - iteration_start;
 
   clock_t context_start = clock();
@@ -667,16 +667,16 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 				double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
 				acc+=gradientScalar;
 			}
-			g_Q.row(v_i) += acc*context_gradients.row(instance);
+			//g_Q.row(v_i) += acc*context_gradients.row(instance);
 			
 			accC+=acc;
 		}
-		g_C.at(i) += accC*context_word_product;
+		//g_C.at(i) += accC*context_word_product;
 	}
 	
   clock_t context_time = clock() - context_start;
 
-	cout<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+	cerr<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
 
   return f;
 }
@@ -697,16 +697,16 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
   for (int instance=0; instance < test_corpus.size(); ++instance) {
     const TrainingInstance& t = instance;
     int context_start = t - context_width;
-		//cout<<endl<<context_width<<" Context for "<<model.label_str(test_corpus.at(t))<<":";
+		//cerr<<endl<<context_width<<" Context for "<<model.label_str(test_corpus.at(t))<<":";
     bool sentence_start = (t==0);
     for (int i=context_width-1; i>=0; --i) {
       int j=context_start+i;
       sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
       int v_i = (sentence_start ? start_id : test_corpus.at(j));
       context_vectors.at(i).row(instance) = model.Q.row(v_i);
-			//cout<<model.label_str(v_i)<<" "<<v_i<<", ";
+			//cerr<<model.label_str(v_i)<<" "<<v_i<<", ";
     }
-		//cout<<endl;
+		//cerr<<endl;
   }
 
 	//create prediction vectors
@@ -718,9 +718,9 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 	// double total_log_word_prob=0;
 	// int testIndex=5;
 	// for (int w=0;w<model.output_types();w++){
-	// 	// cout<<"word:"<<model.label_str(w)<<" yIndex:";
-	// 	// copy(model.ysInternalIndex[w].begin(), model.ysInternalIndex[w].end(), ostream_iterator<int>(cout, " "));
-	// 	// cout<<endl;
+	// 	// cerr<<"word:"<<model.label_str(w)<<" yIndex:";
+	// 	// copy(model.ysInternalIndex[w].begin(), model.ysInternalIndex[w].end(), ostream_iterator<int>(cerr, " "));
+	// 	// cerr<<endl;
 	// 	double log_word_prob = 0;
 	// 		for (int i=model.ys[w].size()-2; i>=0;i--){
 	// 			int y=model.ys[w][i];
@@ -734,23 +734,23 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 	// 				binary_conditional_prob = log_one_minus_sigmoid(word_conditional_score(0)); //log(1-sigmoid(x))
 	// 			}
 	// 			// if(i==0)
-	// 			// 					cout<<"bin_prob node "<<model.label_str(model.ysInternalIndex[w][i])<<": "<<exp(binary_conditional_prob)<<endl;
+	// 			// 					cerr<<"bin_prob node "<<model.label_str(model.ysInternalIndex[w][i])<<": "<<exp(binary_conditional_prob)<<endl;
 	// 			// 				else
-	// 			// 					cout<<"bin_prob node "<<model.ysInternalIndex[w][i]<<": "<<exp(binary_conditional_prob)<<endl;
+	// 			// 					cerr<<"bin_prob node "<<model.ysInternalIndex[w][i]<<": "<<exp(binary_conditional_prob)<<endl;
 	// 			assert(abs((exp(log_sigmoid(word_conditional_score(0)))+exp(log_one_minus_sigmoid(word_conditional_score(0))))-1)<.001);
 	// 			log_word_prob+=binary_conditional_prob;
 	// 		}
-	// 	cout<<"word:"<<model.label_str(w)<<" log_word_prob:"<<exp(log_word_prob)<<endl;
+	// 	cerr<<"word:"<<model.label_str(w)<<" log_word_prob:"<<exp(log_word_prob)<<endl;
 	// 	total_log_word_prob+=exp(log_word_prob);
 	// }
-	// cout<<"total_log_word_prob:"<<total_log_word_prob<<endl;  
-	// cout<<"actual word:"<<model.label_str(test_corpus.at(testIndex))<<endl;
+	// cerr<<"total_log_word_prob:"<<total_log_word_prob<<endl;  
+	// cerr<<"actual word:"<<model.label_str(test_corpus.at(testIndex))<<endl;
 	
 
 
   {
     #pragma omp master
-    cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
+    cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
   
     size_t thread_num = omp_get_thread_num();
     size_t num_threads = omp_get_num_threads();
@@ -760,17 +760,17 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 			//get log of word probability
 			VectorReal prediction_vector = prediction_vectors.row(s);
 			double log_word_prob = getLogWordProb(model,prediction_vector,w);
-			//cout<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(log_word_prob)<<endl;
+			//cerr<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(log_word_prob)<<endl;
 			
  			p += log_word_prob; //multiplying in log space
   		
       #pragma omp master
-      if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }
+      if (tokens % 1000 == 0) { cout << "."; cout.flush(); }
   
       tokens++;
     }
     #pragma omp master
-    cerr << endl;
+    cout << endl;
   }
 
   return p; 
