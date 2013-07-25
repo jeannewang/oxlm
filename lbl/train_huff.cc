@@ -78,7 +78,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride=1);
 
 int main(int argc, char **argv) {
-  cerr << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
+  cout << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
        << REVISION << '\n' << endl;
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
   ///////////////////////////////////////////////////////////////////////////////////////
 
   if (vm.count("help")) { 
-    cerr << cmdline_options << "\n"; 
+    cout << cmdline_options << "\n"; 
     return 1; 
   }
 
@@ -405,7 +405,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       {
         av_f=0.0;
         pp=0.0;
-        cerr << "Iteration " << iteration << ": "; cerr.flush();
+        cout << "Iteration " << iteration << ": "; cerr.flush();
 
         if (vm.count("randomise"))
           std::random_shuffle(training_indices.begin(), training_indices.end());
@@ -440,7 +440,9 @@ void learn(const variables_map& vm, const ModelData& config) {
           adaGrad.array() += global_gradient.array().square();
           for (int w=0; w<model.num_weights(); ++w)
             if (adaGrad(w)) model.W(w) -= (step_size*global_gradient(w) / sqrt(adaGrad(w)));
-
+						
+					//cerr<<"l2-norm:"<<sqrt(model.W.array().square().sum())<<endl;
+            
           // regularisation
           if (lambda > 0) av_f += (0.5*lambda*model.l2_gradient_update(step_size*lambda));
 
@@ -539,12 +541,13 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
     }
   }
   MatrixReal prediction_vectors = MatrixReal::Zero(instances, word_width);
-  for (int i=0; i<context_width; ++i)
+  for (int i=0; i<context_width; ++i){
     prediction_vectors += model.context_product(i, context_vectors.at(i));
+	}
   
 	clock_t cache_time = clock() - cache_start;
 
-  MatrixReal weightedRepresentations = MatrixReal::Zero(instances, word_width);
+  MatrixReal nodeRepresentations = MatrixReal::Zero(instances, word_width);
 
   // calculate the function and gradient for each ngram
 
@@ -554,7 +557,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
     WordId w = training_corpus.at(w_i);
 
 		//fill this for context matrices 
-		weightedRepresentations.row(instance) = model.R.row(w);
+		nodeRepresentations.row(instance) = model.R.row(w);
 		
 		// compute objective function
 		VectorReal prediction_vector = prediction_vectors.row(instance);
@@ -565,8 +568,8 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		for (int i=model.ys[w].size()-2; i>=0;i--){
 			int y=model.ys[w][i];
 			int yIndex=model.ysInternalIndex[w][i+1];
-			VectorReal word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
-			double h=word_conditional_score(0);
+			//cout<<"w:"<<model.label_str(w)<<" y:"<<y<<" yIndex:"<<yIndex<<endl;
+			Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
 			VectorReal rhat=prediction_vectors.row(instance);
 
 			//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
@@ -608,7 +611,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			 
 			
 			g_R.row(yIndex) += R_gradient_contribution;
-			//g_B(yIndex) += B_gradient_contribution;
+			g_B(yIndex) += B_gradient_contribution;
 		}
 
 		//TODO cache floating point operations 
@@ -636,13 +639,15 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 
   clock_t context_start = clock();
 
-	MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
+	MatrixReal CR_products = MatrixReal::Zero(word_width, instances);
 	for (int i=0; i<context_width; ++i) {
-		context_gradients = model.context_product(i, weightedRepresentations, true); // R * C.at(i).transpose();
-		//context_gradients = model.C.at(i) * model.R.transpose(); // C.at(i)*R^T
+		CR_products = model.context_product(i, nodeRepresentations, true); // (R * C.at(i)^T)^T;
+		//CR_products = model.C.at(i) * model.R.transpose(); // C.at(i)*R^T
+		//CR_products = (model.C.at(i).transpose() * model.R).transpose(); // C.at(i)*R^T
 		
-		MatrixReal context_word_product = MatrixReal::Zero(word_width, word_width);
-		context_word_product = context_vectors.at(i).transpose() * weightedRepresentations; //Q^T*R
+		MatrixReal QR_product = MatrixReal::Zero(word_width, word_width);
+		//QR_product = (context_vectors.at(i).transpose() * nodeRepresentations).transpose(); 
+		QR_product = context_vectors.at(i).transpose() * nodeRepresentations; //Q^T*R
 		
 		double accC=0;
 		for (int instance=0; instance < instances; ++instance) {
@@ -657,21 +662,20 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			int v_i = (sentence_start ? start_id : training_corpus.at(j));
 
 			double acc=0;
-			VectorReal word_conditional_score;
+			//MatrixReal word_conditional_score;
 			for ( int k=model.ys[v_i].size()-1; k>0;k--	){
 				int y=model.ys[v_i][k];
 				int yIndex=model.ysInternalIndex[v_i][k];
-				word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
-				double h=word_conditional_score(0);
+				Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
 				//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
 				double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
 				acc+=gradientScalar;
 			}
-			//g_Q.row(v_i) += acc*context_gradients.row(instance);
+			g_Q.row(v_i) += acc*CR_products.row(instance);
 			
 			accC+=acc;
 		}
-		//g_C.at(i) += accC*context_word_product;
+		g_C.at(i) += accC*QR_product;
 	}
 	
   clock_t context_time = clock() - context_start;
@@ -784,8 +788,7 @@ double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& predicti
 		
 		int y=model.ys[w][i];
 		int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
-		VectorReal word_conditional_score = prediction_vector.transpose() * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
-		double wcs=word_conditional_score(0);
+		Real wcs = (model.R.row(yIndex) * prediction_vector.matrix()) + model.B(yIndex);
 		double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
 		
 		log_word_prob += binary_conditional_prob; //multiplying in log space
