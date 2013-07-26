@@ -844,8 +844,7 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
       w_p -= log_z;
       log_z_sum += log_z;
       p += w_p;
-			//cout<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(w_p)<<endl;
-
+			//cout<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(w_p)<<" freqprob:"<<model.unigram(w)<<endl;
 
       #pragma omp master
       if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }

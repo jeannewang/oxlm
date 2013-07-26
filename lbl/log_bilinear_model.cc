@@ -39,7 +39,7 @@ void LogBiLinearModel::init(const ModelData& config, const Dict& labels, bool in
   int context_width = config.ngram_order-1;
 
   int R_size = num_output_words * word_width;
-  int Q_size = num_context_words * word_width;;
+  int Q_size = num_context_words * word_width;
   int C_size = (m_diagonal ? word_width : word_width*word_width);
   //int C_size;
   //if (m_diagonal) C_size = word_width;

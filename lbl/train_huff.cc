@@ -47,9 +47,9 @@ using namespace Eigen;
 typedef vector<WordId> Sentence;
 typedef vector<WordId> Corpus;
 
-void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end,Dict& dict);
-tree<int> createHuffmanTree(VectorReal& unigram, Dict& dict);
-pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<int>& huffmanTree);
+void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict);
+tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram);
+pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& huffmanTree);
 double sigmoid(double x);
 double log_sigmoid(double x);
 double log_one_minus_sigmoid(double x);
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>::pre_order_iterator end,Dict& dict)
+void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict)
 	{
 	if(!tr.is_valid(it)) return;
 	int rootdepth=tr.depth(it);
@@ -194,30 +194,34 @@ void print_tree(const tree<int>& tr, tree<int>::pre_order_iterator it, tree<int>
 	cerr << "-----" << endl;
 	}
 
-tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
-	multimap<float, tree<int> > priQ;
-	tree<int> huffmanTree;
+tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram){
+	
+	VectorReal unigram = model.unigram;
+	Dict dict = model.label_set();
+	
+	multimap<float, tree<float> > priQ;
+	tree<float> huffmanTree;
 	//create huffman tree using unigram freq
    for (size_t i=0; i<dict.size(); i++) {
 		//make new tree node
-		tree<int> node;
+		tree<float> node;
 		node.set_head(i); // key is index into vocabulary 
-		priQ.insert( pair<float,tree<int> >( unigram(i), node )); //lowest probability in front
+		priQ.insert( pair<float,tree<float> >( unigram(i), node )); //lowest probability in front
    }
 	while(priQ.size() >1){
 		//Get the two nodes of highest priority (lowest frequency) from the queue
-		multimap< float,tree<int> >::iterator it1 = priQ.begin();
-		multimap< float,tree<int> >::iterator it2 = it1++;
+		multimap< float,tree<float> >::iterator it1 = priQ.begin();
+		multimap< float,tree<float> >::iterator it2 = it1++;
 		//Create a new internal node with these two nodes as children and with probability equal to the sum of the two nodes' probabilities.
 		//Add the new node to the queue.
 		float priority=(*it1).first+(*it2).first;
-		tree<int> node;
-		node.set_head(-1);
-		tree<int> t1=(*it1).second;
-		tree<int> t2=(*it2).second;
+		tree<float> node;
+		node.set_head(priority);
+		tree<float> t1=(*it1).second;
+		tree<float> t2=(*it2).second;
 		node.append_children(node.begin(),t1.begin(),t1.end());
 		node.append_children(node.begin(),t2.begin(),t2.end());
-		priQ.insert( pair<float,tree<int> >( priority, node ));
+		priQ.insert( pair<float,tree<float> >( priority, node ));
 		//Remove the two nodes of highest priority (lowest probability) from the queue
 		priQ.erase(it1);
 		priQ.erase(it2);
@@ -225,11 +229,11 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 	cerr<<"finished priQ"<<endl;
 	//The remaining node is the root node and the tree is complete.
 	huffmanTree=(*priQ.begin()).second;
-	//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into Q matrix
-
+	
+	//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into R matrix
 	int leafCount=0;
 	{
-		tree<int>::leaf_iterator it=huffmanTree.begin_leaf();
+		tree<float>::leaf_iterator it=huffmanTree.begin_leaf();
 		while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
 			leafCount++;
 				++it;
@@ -241,9 +245,13 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 
 	int internalCount=0;
 	{
-		tree<int>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
+		tree<float>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
 		while(it!=huffmanTree.end_breadth_first() && huffmanTree.is_valid(it)) {
 			if (!huffmanTree.isLeaf(it)){
+				if(updateBWithUnigram){
+					model.B(internalCount)=(*it); //update with unigram probability
+					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;
+				}
 				it=huffmanTree.replace (it, internalCount);
 				internalCount++;
 			}
@@ -256,25 +264,25 @@ tree<int> createHuffmanTree(VectorReal& unigram,Dict& dict){
 	return huffmanTree;
 }
 
-pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<int>& huffmanTree){
+pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& huffmanTree){
 		//store y's in vector of vectors
 		int leafCount=(huffmanTree.size()/2)+1;
 		vector< vector<int> > ys(leafCount); //one y vector per word
 		vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
-		tree<int>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
+		tree<float>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
 		while(itLeaf!=huffmanTree.end_leaf() && huffmanTree.is_valid(itLeaf)) {
 			
 				//figure out y's for this word
 				int wordIndex=(*itLeaf);
-				tree<int>::leaf_iterator it;
+				tree<float>::leaf_iterator it;
 				it=itLeaf;
 				while(it!=NULL && it!=huffmanTree.end() && huffmanTree.is_valid(it)) {
 					int y=huffmanTree.index(it);
 					ys[wordIndex].push_back(y); //order is from the leaf to the root
-					int nodeIndex=(*it);
+					int nodeIndex=(int)(*it);
 					internalIndex[wordIndex].push_back(nodeIndex);
 					//cerr<<(*it)<<" "<<y<<endl;
-					it=tree<int>::parent(it);
+					it=tree<float>::parent(it);
 				}
 				++itLeaf;
 		}
@@ -344,11 +352,11 @@ void learn(const variables_map& vm, const ModelData& config) {
     model.unigram(training_corpus[i]) += 1;
     training_indices[i] = i;
   }
-  model.B = ((model.unigram.array()+1.0)/(model.unigram.sum()+model.unigram.size())).log();
+  //model.B = ((model.unigram.array()+1.0)/(model.unigram.sum()+model.unigram.size())).log();
   model.unigram /= model.unigram.sum();
 
-	//create huffmantree from vocabulary
-	model.huffmanTree = createHuffmanTree(model.unigram,model.label_set());
+	//create huffmantree from vocabulary and set B to unigram distribution
+	model.huffmanTree = createHuffmanTree(model, true);
 
 	//get binary decisions per word in huffmantree
 	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
@@ -475,8 +483,7 @@ void learn(const variables_map& vm, const ModelData& config) {
         if (vm.count("test-set")) {
           cout << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
         }
-        if (vm.count("mixture"))
-          cout << ", Mixture weights = " << softMax(model.M).transpose();
+
         cout << " |" << endl << endl;
       }
     }
@@ -790,10 +797,12 @@ double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& predicti
 		int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
 		Real wcs = (model.R.row(yIndex) * prediction_vector.matrix()) + model.B(yIndex);
 		double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
+		//cout<<"  binprob:"<<binary_conditional_prob<<endl;
 		
 		log_word_prob += binary_conditional_prob; //multiplying in log space
 		
 	}
+	//cout<< "done word:"<<model.label_str(w)<<" predictedprob:"<<exp(log_word_prob)<<" freqprob:"<<model.unigram(w)<<endl;;
 	
   assert(isfinite(log_word_prob));
 	return log_word_prob;

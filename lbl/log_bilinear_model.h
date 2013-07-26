@@ -244,7 +244,7 @@ class HuffmanLogBiLinearModel: public LogBiLinearModel {
 public:
   HuffmanLogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal);
 public:
-  tree<int> huffmanTree;
+  tree<float> huffmanTree;
   std::vector< std::vector<int> > ys;
   std::vector< std::vector<int> > ysInternalIndex;
 
