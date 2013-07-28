@@ -352,7 +352,6 @@ void learn(const variables_map& vm, const ModelData& config) {
     model.unigram(training_corpus[i]) += 1;
     training_indices[i] = i;
   }
-  //model.B = ((model.unigram.array()+1.0)/(model.unigram.sum()+model.unigram.size())).log();
   model.unigram /= model.unigram.sum();
 
 	//create huffmantree from vocabulary and set B to unigram distribution
@@ -585,22 +584,20 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			double B_gradient_contribution = gradientScalar;
 			
 			//TODO: check if gradient is okay using finite difference
-			
-				double epsilon=0.0001;
-				double wcs;
-				double binary_conditional_prob_plus, binary_conditional_prob_minus;
-				
-				// MatrixReal Bcopy = model.B;
-				// Bcopy(yIndex)+=epsilon;
-				// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-				// wcs=word_conditional_score(0);
-				// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-				// 
-				// Bcopy(yIndex)-=2*epsilon;
-				// word_conditional_score = prediction_vectors.row(instance) * (model.R.row(yIndex)).transpose() + Bcopy.row(yIndex);
-				// wcs=word_conditional_score(0);
-				// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-				// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+		
+			// double epsilon=0.00001;
+			// Real wcs;
+			// double binary_conditional_prob_plus, binary_conditional_prob_minus;
+			// 
+			// MatrixReal Bcopy = model.B;
+			// Bcopy(yIndex)+=epsilon;
+			// wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
+			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 
+			// Bcopy(yIndex)-=2*epsilon;
+			// wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
+			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
 			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
 		
 			// MatrixReal Rcopy = model.R;
@@ -627,9 +624,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			//http://ufldl.stanford.edu/wiki/index.php/Gradient_checking_and_advanced_optimization
 			//http://www.mathworks.co.uk/help/optim/ug/checking-validity-of-gradients-or-jacobians.html
 		//TODO check if word probs sum to 1
-		//TODO check if negative log f is negative
 		//TODO check which bit is slowest
-		
 		//TODO check zeroing out of vectors
 		//TODO make toy set with rules
 		//TODO check for l2 norm getting larger without regularization
@@ -649,11 +644,8 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 	MatrixReal CR_products = MatrixReal::Zero(word_width, instances);
 	for (int i=0; i<context_width; ++i) {
 		CR_products = model.context_product(i, nodeRepresentations, true); // (R * C.at(i)^T)^T;
-		//CR_products = model.C.at(i) * model.R.transpose(); // C.at(i)*R^T
-		//CR_products = (model.C.at(i).transpose() * model.R).transpose(); // C.at(i)*R^T
 		
 		MatrixReal QR_product = MatrixReal::Zero(word_width, word_width);
-		//QR_product = (context_vectors.at(i).transpose() * nodeRepresentations).transpose(); 
 		QR_product = context_vectors.at(i).transpose() * nodeRepresentations; //Q^T*R
 		
 		double accC=0;
@@ -669,12 +661,10 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			int v_i = (sentence_start ? start_id : training_corpus.at(j));
 
 			double acc=0;
-			//MatrixReal word_conditional_score;
 			for ( int k=model.ys[v_i].size()-1; k>0;k--	){
 				int y=model.ys[v_i][k];
 				int yIndex=model.ysInternalIndex[v_i][k];
 				Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
-				//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
 				double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
 				acc+=gradientScalar;
 			}
@@ -762,7 +752,11 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
   {
     #pragma omp master
     cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
-  
+
+		// ofstream myfile;
+		// 	  myfile.open ("distribution.txt");
+		// myfile <<"[";
+	
     size_t thread_num = omp_get_thread_num();
     size_t num_threads = omp_get_num_threads();
     for (size_t s = (thread_num*stride); s < test_corpus.size(); s += (num_threads*stride)) {
@@ -774,6 +768,7 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 			//cerr<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(log_word_prob)<<endl;
 			
  			p += log_word_prob; //multiplying in log space
+		  // myfile << model.unigram(w)<<","<<endl;
   		
       #pragma omp master
       if (tokens % 1000 == 0) { cout << "."; cout.flush(); }
@@ -781,6 +776,8 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
       tokens++;
     }
     #pragma omp master
+		// myfile<<"]";
+		// myfile.close();
     cout << endl;
   }
 

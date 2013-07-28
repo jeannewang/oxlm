@@ -821,6 +821,11 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
     #pragma omp master
     cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
 
+
+		ofstream myfile;
+	  myfile.open ("distribution_sgd.txt");
+		myfile <<"[";
+		
     VectorReal prediction_vector(word_width);
     size_t thread_num = omp_get_thread_num();
     size_t num_threads = omp_get_num_threads();
@@ -844,6 +849,7 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
       w_p -= log_z;
       log_z_sum += log_z;
       p += w_p;
+			myfile << exp(w_p)<<","<<endl;
 			//cout<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(w_p)<<" freqprob:"<<model.unigram(w)<<endl;
 
       #pragma omp master
@@ -852,6 +858,8 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
       tokens++;
     }
     #pragma omp master
+		myfile<<"]";
+		myfile.close();
     cerr << endl;
   }
 

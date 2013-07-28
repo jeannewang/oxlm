@@ -539,6 +539,12 @@ Real perplexity(const FactoredOutputLogBiLinearModel& model, const Corpus& test_
     #pragma omp master
     cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens";
 
+
+		
+		ofstream myfile;
+	  myfile.open ("distribution_factored.txt");
+		myfile <<"[";
+		
     VectorReal prediction_vector(word_width);
     size_t thread_num = omp_get_thread_num();
     size_t num_threads = omp_get_num_threads();
@@ -563,6 +569,7 @@ Real perplexity(const FactoredOutputLogBiLinearModel& model, const Corpus& test_
 //           << "+" << word_probs(w-c_start) << " sum=" << word_probs.array().exp().sum() << endl;
 
       p += class_probs(c) + word_probs(w-c_start);
+			myfile << exp(class_probs(c) + word_probs(w-c_start))<<","<<endl;
 
       #pragma omp master
       if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }
@@ -570,6 +577,8 @@ Real perplexity(const FactoredOutputLogBiLinearModel& model, const Corpus& test_
       tokens++;
     }
     #pragma omp master
+		myfile<<"]";
+		myfile.close();
     cerr << endl;
   }
 
