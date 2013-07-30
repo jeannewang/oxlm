@@ -592,8 +592,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			double epsilon=0.00001;
 			Real wcs;
 			double binary_conditional_prob_plus, binary_conditional_prob_minus;
-			VectorReal word_conditional_score;
-			
+			//VectorReal word_conditional_score;
 			// MatrixReal Bcopy = model.B;
 			// 		Bcopy(yIndex)+=epsilon;
 			// 		wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
@@ -731,11 +730,12 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 	
     size_t thread_num = omp_get_thread_num();
     size_t num_threads = omp_get_num_threads();
+		VectorReal prediction_vector;
     for (size_t s = (thread_num*stride); s < test_corpus.size(); s += (num_threads*stride)) {
       WordId w = test_corpus.at(s);
 			
 			//get log of word probability
-			VectorReal prediction_vector = prediction_vectors.row(s);
+			prediction_vector = prediction_vectors.row(s);
 			double log_word_prob = getLogWordProb(model,prediction_vector,w);
 			//cerr<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(log_word_prob)<<endl;
 			
