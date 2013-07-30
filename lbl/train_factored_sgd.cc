@@ -70,7 +70,7 @@ void freq_bin_type(const std::string &corpus, int num_classes, std::vector<int>&
 
 
 int main(int argc, char **argv) {
-  cout << "Online noise contrastive estimation for log-bilinear models: Copyright 2013 Phil Blunsom, " 
+  cerr << "Online noise contrastive estimation for log-bilinear models: Copyright 2013 Phil Blunsom, " 
        << REVISION << '\n' << endl;
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -145,19 +145,19 @@ int main(int argc, char **argv) {
   config.verbose = vm.count("verbose");
   config.classes = vm["classes"].as<int>();
 
-  cerr << "################################" << endl;
-  cerr << "# Config Summary" << endl;
-  cerr << "# order = " << vm["order"].as<int>() << endl;
+  cout << "################################" << endl;
+  cout << "# Config Summary" << endl;
+  cout << "# order = " << vm["order"].as<int>() << endl;
   if (vm.count("model-in"))
-    cerr << "# model-in = " << vm["model-in"].as<string>() << endl;
-  cerr << "# model-out = " << vm["model-out"].as<string>() << endl;
-  cerr << "# input = " << vm["input"].as<string>() << endl;
-  cerr << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
-  cerr << "# lambda = " << vm["lambda"].as<float>() << endl;
-  cerr << "# iterations = " << vm["iterations"].as<int>() << endl;
-  cerr << "# threads = " << vm["threads"].as<int>() << endl;
-  cerr << "# classes = " << config.classes << endl;
-  cerr << "################################" << endl;
+    cout << "# model-in = " << vm["model-in"].as<string>() << endl;
+  cout << "# model-out = " << vm["model-out"].as<string>() << endl;
+  cout << "# input = " << vm["input"].as<string>() << endl;
+  cout << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
+  cout << "# lambda = " << vm["lambda"].as<float>() << endl;
+  cout << "# iterations = " << vm["iterations"].as<int>() << endl;
+  cout << "# threads = " << vm["threads"].as<int>() << endl;
+  cout << "# classes = " << config.classes << endl;
+  cout << "################################" << endl;
 
   omp_set_num_threads(config.threads);
 
@@ -207,7 +207,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       while (line_stream >> token) {
         WordId w = dict.Convert(token, true);
         if (w < 0) {
-          cerr << token << " " << w << endl;
+          cout << token << " " << w << endl;
           //TODO: put this back
 					//assert(!"Unknown word found in test corpus.");
 					w=0;
@@ -349,14 +349,14 @@ void learn(const variables_map& vm, const ModelData& config) {
           // regularisation
           if (lambda > 0) av_f += (0.5*lambda*model.l2_gradient_update(step_size*lambda));
 
-          if (minibatch_counter % 100 == 0) { cerr << "."; cout.flush(); }
+          if (minibatch_counter % 100 == 0) { cout << "."; cout.flush(); }
         }
 
         //start += (minibatch_size*omp_get_num_threads());
         start += minibatch_size;
       }
       #pragma omp master
-      cerr << endl;
+      cout << endl;
 
       Real iteration_time = (clock()-iteration_start) / (Real)CLOCKS_PER_SEC;
 			Real perplexity_start = clock();
@@ -372,19 +372,19 @@ void learn(const variables_map& vm, const ModelData& config) {
       {
 				Real perplexity_time = (clock()-perplexity_start) / (Real)CLOCKS_PER_SEC;
         pp = exp(-pp/test_corpus.size());
-        cerr << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
+        cout << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
         if (vm.count("test-set")) {
-          cerr << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
+          cout << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
         }
         if (vm.count("mixture"))
-          cerr << ", Mixture weights = " << softMax(model.M).transpose();
-        cerr << " |" << endl << endl;
+          cout << ", Mixture weights = " << softMax(model.M).transpose();
+        cout << " |" << endl << endl;
       }
     }
   }
 
   if (vm.count("model-out")) {
-    cout << "Writing trained model to " << vm["model-out"].as<string>() << endl;
+    cerr << "Writing trained model to " << vm["model-out"].as<string>() << endl;
     std::ofstream f(vm["model-out"].as<string>().c_str());
     boost::archive::text_oarchive ar(f);
     ar << model;
@@ -508,12 +508,12 @@ Real sgd_gradient(FactoredOutputLogBiLinearModel& model,
 
       g_Q.row(v_i) += context_gradients.row(instance);
 			// clock_t context_time = clock() - context_start;
-			// 		cout<<"time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+			// 		cerr<<"time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
     }
     model.context_gradient_update(g_C.at(i), context_vectors.at(i), weightedRepresentations);
   }
   clock_t context_time = clock() - context_start;
-	cout<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+	cerr<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
 
 
   return f;
@@ -537,7 +537,7 @@ Real perplexity(const FactoredOutputLogBiLinearModel& model, const Corpus& test_
 
   {
     #pragma omp master
-    cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens";
+    cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens";
 
 
 		
@@ -565,21 +565,21 @@ Real perplexity(const FactoredOutputLogBiLinearModel& model, const Corpus& test_
       int c_start = model.indexes.at(c);
       VectorReal class_probs = logSoftMax(model.F * prediction_vector + model.FB);
       VectorReal word_probs = logSoftMax(model.class_R(c) * prediction_vector + model.class_B(c));
-//      cerr << model.label_str(w) << ": class=" << c << " log_prob=" << class_probs(c) 
+//      cout << model.label_str(w) << ": class=" << c << " log_prob=" << class_probs(c) 
 //           << "+" << word_probs(w-c_start) << " sum=" << word_probs.array().exp().sum() << endl;
 
       p += class_probs(c) + word_probs(w-c_start);
 			myfile << exp(class_probs(c) + word_probs(w-c_start))<<","<<endl;
 
       #pragma omp master
-      if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }
+      if (tokens % 1000 == 0) { cout << "."; cout.flush(); }
 
       tokens++;
     }
     #pragma omp master
 		myfile<<"]";
 		myfile.close();
-    cerr << endl;
+    cout << endl;
   }
 
   return p;
@@ -622,7 +622,7 @@ void freq_bin_type(const std::string &corpus, int num_classes, vector<int>& clas
   for (int i=0; i < int(counts.size()); ++i) {
     WordId id = dict.Convert(counts.at(i).first);
     if ((mass += counts.at(i).second) > bin_size) {
-//      cerr << " " << classes.size() << ": " << classes.back() << " " << mass << endl;
+//      cout << " " << classes.size() << ": " << classes.back() << " " << mass << endl;
       bin_size = (sum -= mass) / (num_classes - classes.size());
 
       class_bias(classes.size()-1) = log(mass);
@@ -634,10 +634,10 @@ void freq_bin_type(const std::string &corpus, int num_classes, vector<int>& clas
   if (classes.back() != int(dict.size()))
     classes.push_back(dict.size());
 
-//  cerr << " " << classes.size() << ": " << classes.back() << " " << mass << endl;
+//  cout << " " << classes.size() << ": " << classes.back() << " " << mass << endl;
   class_bias.array() -= log(eos_sum+sum);
 
-  cerr << "Binned " << dict.size() << " types in " << classes.size()-1 << " classes with an average of " 
+  cout << "Binned " << dict.size() << " types in " << classes.size()-1 << " classes with an average of " 
        << float(dict.size()) / float(classes.size()-1) << " types per bin." << endl; 
   in.close();
 }

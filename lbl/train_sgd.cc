@@ -82,7 +82,7 @@ Real mixture_perplexity(const LogBiLinearModel& model, const Corpus& test_corpus
 
 
 int main(int argc, char **argv) {
-  cout << "Online noise contrastive estimation for log-bilinear models: Copyright 2013 Phil Blunsom, " 
+  cerr << "Online noise contrastive estimation for log-bilinear models: Copyright 2013 Phil Blunsom, " 
        << REVISION << '\n' << endl;
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -161,21 +161,21 @@ int main(int argc, char **argv) {
   config.verbose = vm.count("verbose");
   config.uniform = vm.count("uniform");
 
-  cerr << "################################" << endl;
-  cerr << "# Config Summary" << endl;
-  cerr << "# order = " << vm["order"].as<int>() << endl;
+  cout << "################################" << endl;
+  cout << "# Config Summary" << endl;
+  cout << "# order = " << vm["order"].as<int>() << endl;
   if (vm.count("model-in"))
-    cerr << "# model-in = " << vm["model-in"].as<string>() << endl;
-  cerr << "# model-out = " << vm["model-out"].as<string>() << endl;
-  cerr << "# input = " << vm["input"].as<string>() << endl;
-  cerr << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
-  cerr << "# lambda = " << vm["lambda"].as<float>() << endl;
-  cerr << "# label-sample-size = " << vm["label-sample-size"].as<int>() << endl;
-  cerr << "# iterations = " << vm["iterations"].as<int>() << endl;
-  cerr << "# threads = " << vm["threads"].as<int>() << endl;
-  cerr << "# mixture = " << vm.count("mixture") << endl;
-  cerr << "# pseudo = " << vm.count("pseudo") << endl;
-  cerr << "################################" << endl;
+    cout << "# model-in = " << vm["model-in"].as<string>() << endl;
+  cout << "# model-out = " << vm["model-out"].as<string>() << endl;
+  cout << "# input = " << vm["input"].as<string>() << endl;
+  cout << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
+  cout << "# lambda = " << vm["lambda"].as<float>() << endl;
+  cout << "# label-sample-size = " << vm["label-sample-size"].as<int>() << endl;
+  cout << "# iterations = " << vm["iterations"].as<int>() << endl;
+  cout << "# threads = " << vm["threads"].as<int>() << endl;
+  cout << "# mixture = " << vm.count("mixture") << endl;
+  cout << "# pseudo = " << vm.count("pseudo") << endl;
+  cout << "################################" << endl;
 
   omp_set_num_threads(config.threads);
 
@@ -217,7 +217,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       while (line_stream >> token) {
         WordId w = dict.Convert(token, true);
         if (w < 0) {
-          cerr << token << " " << w << endl;
+          cout << token << " " << w << endl;
           w=0;
 					//TODO: deal with unknown words
           //assert(!"Unknown word found in test corpus.");
@@ -351,14 +351,14 @@ void learn(const variables_map& vm, const ModelData& config) {
           // regularisation
           if (lambda > 0) model.l2_gradient_update(step_size*lambda);
 
-          if (minibatch_counter % 100 == 0) { cerr << "."; cout.flush(); }
+          if (minibatch_counter % 100 == 0) { cout << "."; cout.flush(); }
         }
 
         //start += (minibatch_size*omp_get_num_threads());
         start += minibatch_size;
       }
       #pragma omp master
-      cerr << endl;
+      cout << endl;
 
       Real iteration_time = (clock()-iteration_start) / (Real)CLOCKS_PER_SEC;
 			Real perplexity_start = clock();
@@ -381,19 +381,19 @@ void learn(const variables_map& vm, const ModelData& config) {
       {
 				Real perplexity_time = (clock()-perplexity_start) / (Real)CLOCKS_PER_SEC;
         pp = exp(-pp/test_corpus.size());
-        cerr << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
+        cout << " | Time: " << iteration_time << " seconds, Average f = " << av_f/training_corpus.size();
         if (vm.count("test-set")) {
-          cerr << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
+          cout << ", Test Perplexity = " << pp<< ", Perplexity Time: " << perplexity_time << " seconds"; 
         }
         if (vm.count("mixture"))
-          cerr << ", Mixture weights = " << softMax(model.M).transpose();
-        cerr << " |" << endl << endl;
+          cout << ", Mixture weights = " << softMax(model.M).transpose();
+        cout << " |" << endl << endl;
       }
     }
   }
 
   if (vm.count("model-out")) {
-    cout << "Writing trained model to " << vm["model-out"].as<string>() << endl;
+    cerr << "Writing trained model to " << vm["model-out"].as<string>() << endl;
     std::ofstream f(vm["model-out"].as<string>().c_str());
     boost::archive::text_oarchive ar(f);
     ar << model;
@@ -504,9 +504,9 @@ Real sgd_gradient(LogBiLinearModel& model,
   }
 
   // Drop out masking of the prediction vectors
-  //cerr << "HERE" << endl;
+  //cout << "HERE" << endl;
   //ArrayReal drop_out = Eigen::ArrayXf::Random(instances, word_width);
-  //cerr << "THERE" << endl;
+  //cout << "THERE" << endl;
   /*
   MatrixReal drop_out = MatrixReal::Ones(instances, word_width);
   if (rand()%2)
@@ -640,7 +640,7 @@ Real sgd_gradient(LogBiLinearModel& model,
       model.context_gradient_update(g_C.at(i), rev_weightedRepresentations, rev_context_vectors.at(i));
   }
   clock_t context_time = clock() - context_start;
-	cout<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+	cerr<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
 
 
   return f;
@@ -819,7 +819,7 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
 */
   {
     #pragma omp master
-    cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
+    cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
 
 
 		ofstream myfile;
@@ -850,17 +850,17 @@ Real perplexity(const LogBiLinearModel& model, const Corpus& test_corpus, int st
       log_z_sum += log_z;
       p += w_p;
 			myfile << exp(w_p)<<","<<endl;
-			//cout<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(w_p)<<" freqprob:"<<model.unigram(w)<<endl;
+			//cerr<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(w_p)<<" freqprob:"<<model.unigram(w)<<endl;
 
       #pragma omp master
-      if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }
+      if (tokens % 1000 == 0) { cout << "."; cout.flush(); }
 
       tokens++;
     }
     #pragma omp master
 		myfile<<"]";
 		myfile.close();
-    cerr << endl;
+    cout << endl;
   }
 
   //return exp(-p/tokens);
@@ -888,7 +888,7 @@ Real mixture_perplexity(const LogBiLinearModel& model, const Corpus& test_corpus
   size_t num_threads = omp_get_num_threads();
 
   #pragma omp master
-  cerr << "Calculating perplexity for " << test_corpus.size()/stride << " tokens";
+  cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens";
 
   for (size_t s = (thread_num*stride); s < test_corpus.size(); s += (num_threads*stride)) {
     WordId w = test_corpus.at(s);
@@ -913,10 +913,10 @@ Real mixture_perplexity(const LogBiLinearModel& model, const Corpus& test_corpus
     tokens++;
 
     #pragma omp master
-    if (tokens % 1000 == 0) { cerr << "."; cerr.flush(); }
+    if (tokens % 1000 == 0) { cout << "."; cout.flush(); }
   }
   #pragma omp master
-  cerr << endl;
+  cout << endl;
 
   return p;
 }

@@ -592,32 +592,32 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			double epsilon=0.00001;
 			Real wcs;
 			double binary_conditional_prob_plus, binary_conditional_prob_minus;
-			//VectorReal word_conditional_score;
+			VectorReal word_conditional_score;
+			
 			// MatrixReal Bcopy = model.B;
-			// 		Bcopy(yIndex)+=epsilon;
-			// 		wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
-			// 		binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 		
-			// 		Bcopy(yIndex)-=2*epsilon;
-			// 		wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
-			// 		binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 		double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			// 		cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
-			// 	
-			// 		MatrixReal Rcopy = model.R;
-			// 		Rcopy.row(yIndex).array()+=epsilon;
-			// 		word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
-			// 		wcs=word_conditional_score(0);
-			// 		binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 		
-			// 		Rcopy(yIndex)-=2*epsilon;
-			// 		word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
-			// 		wcs=word_conditional_score(0);
-			// 		binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 		double finiteDiffR=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			// 		cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
+			// Bcopy(yIndex)+=epsilon;
+			// wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
+			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 
+			// Bcopy(yIndex)-=2*epsilon;
+			// wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
+			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// double finiteDiffB=(binary_conditional_prob_plus-binary_conditional_prob_minus)/(2.0*epsilon);
+			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
+
+			// MatrixReal Rcopy = model.R;
+			// Rcopy.row(yIndex).array()+=epsilon;
+			// h = (Rcopy.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
+			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+			// 
+			// Rcopy(yIndex)-=2*epsilon;
+			// h = (Rcopy.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
+			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+			// double finiteDiffR=(binary_conditional_prob_plus-binary_conditional_prob_minus)/(2.0*epsilon);
+			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
 			 
 			log_word_prob += binary_conditional_prob; //multiplying in log space
+			//g_R.row(yIndex) += finiteDiffR*rhat;
 			g_R.row(yIndex) += R_gradient_contribution;
 			g_B(yIndex) += B_gradient_contribution;
 		}
