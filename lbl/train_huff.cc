@@ -558,65 +558,73 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   // calculate the function and gradient for each ngram
 
   clock_t iteration_start = clock();
+
+	VectorReal rhat,R_gradient_contribution;
+	
   for (int instance=0; instance < instances; instance++) {
 	  int w_i = training_instances.at(instance);
     WordId w = training_corpus.at(w_i);
 
-		//fill this for context matrices 
-		nodeRepresentations.row(instance) = model.R.row(w);
-		
-		// compute objective function
-		VectorReal prediction_vector = prediction_vectors.row(instance);
-		double log_word_prob = getLogWordProb(model,prediction_vector,w);
-		f -=log_word_prob;
+		double log_word_prob = 0;
 
-    // do the gradient updates:
+    // do the gradient updates for R and B and compute objective function:
 		for (int i=model.ys[w].size()-2; i>=0;i--){
 			int y=model.ys[w][i];
 			int yIndex=model.ysInternalIndex[w][i+1];
 			//cout<<"w:"<<model.label_str(w)<<" y:"<<y<<" yIndex:"<<yIndex<<endl;
 			Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
-			VectorReal rhat=prediction_vectors.row(instance);
-
+			
+			//for computing objective function
+			double binary_conditional_prob = ((y==1) ? log_sigmoid(h) : log_one_minus_sigmoid(h) ) ;		
+						
+			//for computing R and B gradients
+			rhat=prediction_vectors.row(instance);
 			//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
 			double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
-			VectorReal R_gradient_contribution = gradientScalar*rhat;
+			R_gradient_contribution = gradientScalar*rhat;
 			double B_gradient_contribution = gradientScalar;
+
+      /////// Added for context gradient update /////// 
+  		nodeRepresentations.row(instance) += (gradientScalar*model.R.row(yIndex));
 			
 			//TODO: check if gradient is okay using finite difference
 		
-			// double epsilon=0.00001;
-			// Real wcs;
-			// double binary_conditional_prob_plus, binary_conditional_prob_minus;
-			// 
-			// MatrixReal Bcopy = model.B;
-			// Bcopy(yIndex)+=epsilon;
-			// wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
-			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 
-			// Bcopy(yIndex)-=2*epsilon;
-			// wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
-			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
-		
-			// MatrixReal Rcopy = model.R;
-			// Rcopy.row(yIndex).array()+=epsilon;
-			// word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
-			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// 
-			// Rcopy(yIndex)-=2*epsilon;
-			// word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
-			// wcs=word_conditional_score(0);
-			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
-			// double finiteDiffR=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
-			//cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
-			 
+			double epsilon=0.00001;
+			Real wcs;
+			double binary_conditional_prob_plus, binary_conditional_prob_minus;
+			VectorReal word_conditional_score;
 			
+			// MatrixReal Bcopy = model.B;
+			// 		Bcopy(yIndex)+=epsilon;
+			// 		wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
+			// 		binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 		
+			// 		Bcopy(yIndex)-=2*epsilon;
+			// 		wcs = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + Bcopy(yIndex);
+			// 		binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 		double finiteDiffB=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			// 		cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
+			// 	
+			// 		MatrixReal Rcopy = model.R;
+			// 		Rcopy.row(yIndex).array()+=epsilon;
+			// 		word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
+			// 		wcs=word_conditional_score(0);
+			// 		binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 		
+			// 		Rcopy(yIndex)-=2*epsilon;
+			// 		word_conditional_score = prediction_vectors.row(instance) * (Rcopy.row(yIndex)).transpose() + model.B.row(yIndex);
+			// 		wcs=word_conditional_score(0);
+			// 		binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(wcs) : -log_one_minus_sigmoid(wcs) ) ;
+			// 		double finiteDiffR=(exp(binary_conditional_prob_plus)-exp(binary_conditional_prob_minus))/(2.0*epsilon);
+			// 		cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
+			 
+			log_word_prob += binary_conditional_prob; //multiplying in log space
 			g_R.row(yIndex) += R_gradient_contribution;
 			g_B(yIndex) += B_gradient_contribution;
 		}
+		//compute objective function
+		assert(isfinite(log_word_prob));
+		f -=log_word_prob;
 
 		//TODO cache floating point operations 
 		//TODO run on small data set
@@ -633,51 +641,39 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		//TODO gradient descent or ascent? minimization or maximizing?
 		//TODO print out vectors make sure they're getting smaller or whatever
 		//TODO play with very small dimensional stuff
+		//TODO take out getLogProb
+		//TODO recheck gradient and latex work!!!!
+		//TODO add in finite diff for all on batches
+		//TODO maybe check if word we want has highest probability of all words in tree
 		
 		
   }
-	//cerr<<endl<<"done with r and b gradient update"<<endl;
   clock_t iteration_time = clock() - iteration_start;
 
   clock_t context_start = clock();
 
-	MatrixReal CR_products = MatrixReal::Zero(word_width, instances);
-	for (int i=0; i<context_width; ++i) {
-		CR_products = model.context_product(i, nodeRepresentations, true); // (R * C.at(i)^T)^T;
-		
-		MatrixReal QR_product = MatrixReal::Zero(word_width, word_width);
-		QR_product = context_vectors.at(i).transpose() * nodeRepresentations; //Q^T*R
-		
-		double accC=0;
-		for (int instance=0; instance < instances; ++instance) {
-			int w_i = training_instances.at(instance);
-			int j = w_i-context_width+i;
+  MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
+  for (int i=0; i<context_width; ++i) {
+    context_gradients = model.context_product(i, nodeRepresentations, true); // nodeRepresentations*C(i)^T
 
-			bool sentence_start = (j<0);
-			for (int k=j; !sentence_start && k < w_i; k++)
-				if (training_corpus.at(k) == end_id) 
-					sentence_start=true;
+    for (int instance=0; instance < instances; ++instance) {
+      int w_i = training_instances.at(instance);
+      int j = w_i-context_width+i;
 
-			int v_i = (sentence_start ? start_id : training_corpus.at(j));
+      bool sentence_start = (j<0);
+      for (int k=j; !sentence_start && k < w_i; k++)
+        if (training_corpus.at(k) == end_id) 
+          sentence_start=true;
+      int v_i = (sentence_start ? start_id : training_corpus.at(j));
 
-			double acc=0;
-			for ( int k=model.ys[v_i].size()-1; k>0;k--	){
-				int y=model.ys[v_i][k];
-				int yIndex=model.ysInternalIndex[v_i][k];
-				Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
-				double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
-				acc+=gradientScalar;
-			}
-			g_Q.row(v_i) += acc*CR_products.row(instance);
-			
-			accC+=acc;
-		}
-		g_C.at(i) += accC*QR_product;
-	}
-	
+      g_Q.row(v_i) += context_gradients.row(instance);
+    }
+    model.context_gradient_update(g_C.at(i), context_vectors.at(i), nodeRepresentations);
+  }
+  
   clock_t context_time = clock() - context_start;
 
-	cerr<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
+//	cerr<<"cache_time:"<<(cache_time/ (Real)CLOCKS_PER_SEC)<<" iteration_time:"<<(iteration_time/(Real)CLOCKS_PER_SEC)<<" context_time:"<<(context_time/ (Real)CLOCKS_PER_SEC)<<endl;
 
   return f;
 }
@@ -698,16 +694,13 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
   for (int instance=0; instance < test_corpus.size(); ++instance) {
     const TrainingInstance& t = instance;
     int context_start = t - context_width;
-		//cerr<<endl<<context_width<<" Context for "<<model.label_str(test_corpus.at(t))<<":";
     bool sentence_start = (t==0);
     for (int i=context_width-1; i>=0; --i) {
       int j=context_start+i;
       sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
       int v_i = (sentence_start ? start_id : test_corpus.at(j));
       context_vectors.at(i).row(instance) = model.Q.row(v_i);
-			//cerr<<model.label_str(v_i)<<" "<<v_i<<", ";
     }
-		//cerr<<endl;
   }
 
 	//create prediction vectors
@@ -719,35 +712,14 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 	// double total_log_word_prob=0;
 	// int testIndex=5;
 	// for (int w=0;w<model.output_types();w++){
-	// 	// cerr<<"word:"<<model.label_str(w)<<" yIndex:";
-	// 	// copy(model.ysInternalIndex[w].begin(), model.ysInternalIndex[w].end(), ostream_iterator<int>(cerr, " "));
-	// 	// cerr<<endl;
-	// 	double log_word_prob = 0;
-	// 		for (int i=model.ys[w].size()-2; i>=0;i--){
-	// 			int y=model.ys[w][i];
-	// 			int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
-	// 			VectorReal word_conditional_score = prediction_vectors.row(testIndex) * (model.R.row(yIndex)).transpose() + model.B.row(yIndex);
-	// 			double binary_conditional_prob;
-	// 			if (y==1){
-	// 				binary_conditional_prob = log_sigmoid(word_conditional_score(0)); //log(sigmoid(x))
-	// 			}
-	// 			else if (y==0){
-	// 				binary_conditional_prob = log_one_minus_sigmoid(word_conditional_score(0)); //log(1-sigmoid(x))
-	// 			}
-	// 			// if(i==0)
-	// 			// 					cerr<<"bin_prob node "<<model.label_str(model.ysInternalIndex[w][i])<<": "<<exp(binary_conditional_prob)<<endl;
-	// 			// 				else
-	// 			// 					cerr<<"bin_prob node "<<model.ysInternalIndex[w][i]<<": "<<exp(binary_conditional_prob)<<endl;
-	// 			assert(abs((exp(log_sigmoid(word_conditional_score(0)))+exp(log_one_minus_sigmoid(word_conditional_score(0))))-1)<.001);
-	// 			log_word_prob+=binary_conditional_prob;
-	// 		}
+	// 
+	// 	VectorReal prediction_vector = prediction_vectors.row(testIndex);
+	// 	double log_word_prob = getLogWordProb(model,prediction_vector,w);
 	// 	cerr<<"word:"<<model.label_str(w)<<" log_word_prob:"<<exp(log_word_prob)<<endl;
 	// 	total_log_word_prob+=exp(log_word_prob);
 	// }
 	// cerr<<"total_log_word_prob:"<<total_log_word_prob<<endl;  
 	// cerr<<"actual word:"<<model.label_str(test_corpus.at(testIndex))<<endl;
-	
-
 
   {
     #pragma omp master
@@ -793,13 +765,10 @@ double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& predicti
 		int y=model.ys[w][i];
 		int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
 		Real wcs = (model.R.row(yIndex) * prediction_vector.matrix()) + model.B(yIndex);
-		double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;
-		//cout<<"  binprob:"<<binary_conditional_prob<<endl;
-		
-		log_word_prob += binary_conditional_prob; //multiplying in log space
-		
+		double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;		
+		log_word_prob += binary_conditional_prob; //multiplying in log space	
+			
 	}
-	//cout<< "done word:"<<model.label_str(w)<<" predictedprob:"<<exp(log_word_prob)<<" freqprob:"<<model.unigram(w)<<endl;;
 	
   assert(isfinite(log_word_prob));
 	return log_word_prob;
