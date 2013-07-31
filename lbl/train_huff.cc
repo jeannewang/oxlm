@@ -590,9 +590,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			//TODO: check if gradient is okay using finite difference
 		
 			double epsilon=0.00001;
-			Real wcs;
 			double binary_conditional_prob_plus, binary_conditional_prob_minus;
-			VectorReal word_conditional_score;
 			
 			// MatrixReal Bcopy = model.B;
 			// Bcopy(yIndex)+=epsilon;
@@ -605,19 +603,26 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 			// double finiteDiffB=(binary_conditional_prob_plus-binary_conditional_prob_minus)/(2.0*epsilon);
 			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" B_gradient_contribution: "<<B_gradient_contribution<< " | B Real gradient:"<<finiteDiffB<<endl;
 
-			// MatrixReal Rcopy = model.R;
-			// Rcopy.row(yIndex).array()+=epsilon;
-			// h = (Rcopy.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
-			// binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
-			// 
-			// Rcopy(yIndex)-=2*epsilon;
-			// h = (Rcopy.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
-			// binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
-			// double finiteDiffR=(binary_conditional_prob_plus-binary_conditional_prob_minus)/(2.0*epsilon);
-			// cerr <<"y:"<<y<<" h:"<<h<<" wcs:"<<wcs<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<(finiteDiffR*rhat).sum()<<endl;
+			// MatrixReal Rcopyplus = model.R;
+			// 		MatrixReal Rcopyminus = model.R;
+			// 		VectorReal finiteDiffVector = VectorReal::Zero(model.R.cols());;
+			// 		for (int j=0;j<model.R.cols();j++){
+			// 			Rcopyplus(yIndex,j)+=epsilon;
+			// 			h = (Rcopyplus.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
+			// 			binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+			// 			Rcopyplus(yIndex,j)-=epsilon;
+			// 			
+			// 			Rcopyminus(yIndex,j)-=epsilon;
+			// 			h = (Rcopyminus.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
+			// 			binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+			// 			Rcopyminus(yIndex,j)+=epsilon;
+			// 			
+			// 			double finiteDiffR=(binary_conditional_prob_plus-binary_conditional_prob_minus)/(2.0*epsilon);
+			// 			finiteDiffVector(j) = finiteDiffR;
+			// 		}
+			// 		cerr <<"y:"<<y<<" h:"<<h<<" R_gradient_contribution: "<<R_gradient_contribution.sum()<< " | R Real gradient:"<<finiteDiffVector.sum()<<endl;
 			 
 			log_word_prob += binary_conditional_prob; //multiplying in log space
-			//g_R.row(yIndex) += finiteDiffR*rhat;
 			g_R.row(yIndex) += R_gradient_contribution;
 			g_B(yIndex) += B_gradient_contribution;
 		}
@@ -650,7 +655,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   clock_t iteration_time = clock() - iteration_start;
 
   clock_t context_start = clock();
-
+		double epsilon=0.00001;
   MatrixReal context_gradients = MatrixReal::Zero(word_width, instances);
   for (int i=0; i<context_width; ++i) {
     context_gradients = model.context_product(i, nodeRepresentations, true); // nodeRepresentations*C(i)^T
@@ -664,10 +669,106 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
         if (training_corpus.at(k) == end_id) 
           sentence_start=true;
       int v_i = (sentence_start ? start_id : training_corpus.at(j));
+			g_Q.row(v_i) += context_gradients.row(instance);
 
-      g_Q.row(v_i) += context_gradients.row(instance);
+
+		 // WordId w = training_corpus.at(w_i);
+		 // 			VectorReal finiteDiffVector = VectorReal::Zero(g_Q.cols());
+		 // 			VectorReal preVCopyPlus = prediction_vectors.row(instance);
+		 // 			VectorReal preVCopyMinus = prediction_vectors.row(instance);
+		 // 			preVCopyPlus -= context_vectors.at(i).row(instance) * model.C.at(i);
+		 // 			preVCopyMinus -= context_vectors.at(i).row(instance) * model.C.at(i);
+		 // 			VectorReal contextCopy=context_vectors.at(i).row(instance);
+		 // 			
+		 // 			for (int j=0;j<g_Q.cols();j++){
+		 // 				Real word_plus=0;
+		 // 				Real word_minus=0;
+		 // 				contextCopy(j)+=epsilon;
+		 // 				preVCopyPlus +=(contextCopy.transpose()*model.C.at(i));
+		 // 				
+		 // 				for (int k=model.ys[w].size()-2; k>=0;k--){
+		 // 					int y=model.ys[w][k];
+		 // 					int yIndex=model.ysInternalIndex[w][k+1];
+		 // 					
+		 // 					Real h = (model.R.row(yIndex) * preVCopyPlus) + model.B(yIndex);
+		 // 					Real binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+		 // 					word_plus+=binary_conditional_prob_plus;
+		 // 				}
+		 // 				preVCopyPlus -=(contextCopy.transpose()*model.C.at(i));				
+		 // 				
+		 // 				contextCopy(j)-=2*epsilon;
+		 // 				preVCopyMinus +=(contextCopy.transpose()*model.C.at(i));
+		 // 				for (int k=model.ys[w].size()-2; k>=0;k--){
+		 // 					int y=model.ys[w][k];
+		 // 					int yIndex=model.ysInternalIndex[w][k+1];
+		 // 					Real h = (model.R.row(yIndex) * preVCopyMinus) + model.B(yIndex);
+		 // 					Real binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+		 // 					word_minus+=binary_conditional_prob_minus;
+		 // 				}
+		 // 				preVCopyMinus -=(contextCopy.transpose()*model.C.at(i));
+		 // 				contextCopy(j)+=epsilon;
+		 // 				
+		 // 				double finiteDiffR=(word_plus-word_minus)/(2.0*epsilon);
+		 // 				finiteDiffVector(j) += finiteDiffR;
+		 // 			}
+		 // 			cerr <<" Q_gradient_contribution: "<<context_gradients.row(instance).sum()<< " | Q Real gradient:"<<finiteDiffVector.sum()<<endl;
+						
     }
     model.context_gradient_update(g_C.at(i), context_vectors.at(i), nodeRepresentations);
+		
+		
+		
+					
+				// MatrixReal Ccopyplus = model.C.at(i);
+				// MatrixReal Ccopyminus = model.C.at(i);
+				// MatrixReal finiteDiffVector = MatrixReal::Zero(Ccopyplus.rows(),Ccopyplus.cols());
+				// MatrixReal preV=prediction_vectors;
+				// 
+				// preV -= model.context_product(i, context_vectors.at(i));
+				// for (int instance=0; instance < instances; ++instance) {
+				// 	int w_i = training_instances.at(instance);
+				// 	WordId w = training_corpus.at(w_i);
+				// 	
+				// 	for (int j=0;j<Ccopyplus.rows();j++){
+				// 		for (int o=0;o<Ccopyplus.cols();o++){
+				// 			
+				// 			Ccopyplus(j,o)+=epsilon;
+				// 			preV +=(context_vectors.at(i)*Ccopyplus);
+				// 			Real wordplus=0;
+				// 			for (int k=model.ys[w].size()-2; k>=0;k--){
+				// 				int y=model.ys[w][k];
+				// 				int yIndex=model.ysInternalIndex[w][k+1];
+				// 				
+				// 				Real h = (model.R.row(yIndex) * preV.row(instance).transpose()) + model.B(yIndex);
+				// 				Real binary_conditional_prob_plus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+				// 				wordplus+=binary_conditional_prob_plus;
+				// 			}
+				// 			preV -=(context_vectors.at(i)*Ccopyplus);
+				// 			Ccopyplus(j,o)-=epsilon;
+				// 			
+				// 			Ccopyminus(j,o)-=epsilon;
+				// 			preV +=(context_vectors.at(i)*Ccopyminus);
+				// 			Real wordminus=0;
+				// 			for (int k=model.ys[w].size()-2; k>=0;k--){
+				// 				int y=model.ys[w][k];
+				// 				int yIndex=model.ysInternalIndex[w][k+1];
+				// 				Real h = (model.R.row(yIndex) * preV.row(instance).transpose()) + model.B(yIndex);
+				// 				Real binary_conditional_prob_minus = ((y==1) ? -log_sigmoid(h) : -log_one_minus_sigmoid(h) ) ;
+				// 				wordminus+=binary_conditional_prob_minus;
+				// 			}
+				// 			preV -=(context_vectors.at(i)*Ccopyminus);
+				// 			Ccopyminus(j,o)+=epsilon;
+				// 			
+				// 			double finiteDiffR=(wordplus-wordminus)/(2.0*epsilon);
+				// 			finiteDiffVector(j,o) += finiteDiffR;
+				// 		}
+				// 	}
+				// }
+				// 
+				// preV += model.context_product(i, context_vectors.at(i));
+				// MatrixReal C_gradient_contribution = (context_vectors.at(i).transpose() * nodeRepresentations); 
+				// cerr <<" C_gradient_contribution: "<<C_gradient_contribution.sum()<< " | C Real gradient:"<<finiteDiffVector.sum()<<endl;
+
   }
   
   clock_t context_time = clock() - context_start;
