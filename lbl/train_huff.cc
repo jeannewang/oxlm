@@ -54,6 +54,7 @@ double sigmoid(double x);
 double log_sigmoid(double x);
 double log_one_minus_sigmoid(double x);
 double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& prediction_vector, WordId w );
+void highestProbability(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus);
 
 void learn(const variables_map& vm, const ModelData& config);
 
@@ -466,6 +467,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 			Real perplexity_start = clock();
       if (vm.count("test-set")) {
         Real local_pp = perplexity(model, test_corpus, 1);
+				//if (iteration == vm["iterations"].as<int>()-1) highestProbability(model, test_corpus);
 
         #pragma omp critical 
         { pp += local_pp; }
@@ -649,6 +651,8 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		//TODO derive gradient and write in latex !!!!
 		//TODO add in finite diff for all on batches
 		//TODO maybe check if word we want has highest probability of all words in tree
+		//TODO break down by path length
+		//TODO training data are sorted by theircomplexity incremental learning p77
 		
 		
   }
@@ -778,6 +782,54 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
   return f;
 }
 
+void highestProbability(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus){
+	int word_width = model.config.word_representation_size;
+  int context_width = model.config.ngram_order-1;
+
+  int tokens=0;
+  WordId start_id = model.label_set().Lookup("<s>");
+  WordId end_id = model.label_set().Lookup("</s>");
+
+	//fill context vectors
+  vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(test_corpus.size(), word_width)); 
+  for (int instance=0; instance < test_corpus.size(); ++instance) {
+    const TrainingInstance& t = instance;
+    int context_start = t - context_width;
+    bool sentence_start = (t==0);
+    for (int i=context_width-1; i>=0; --i) {
+      int j=context_start+i;
+      sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
+      int v_i = (sentence_start ? start_id : test_corpus.at(j));
+      context_vectors.at(i).row(instance) = model.Q.row(v_i);
+    }
+  }
+
+	//create prediction vectors
+  MatrixReal prediction_vectors = MatrixReal::Zero(test_corpus.size(), word_width);
+  for (int i=0; i<context_width; ++i)
+    prediction_vectors += model.context_product(i, context_vectors.at(i));
+
+	//check if word has highest prob
+	int biggerCount=0;
+	for (int testIndex=0;testIndex<model.output_types();testIndex++){
+		VectorReal probs=VectorReal::Zero(model.output_types());
+		for (int w=0;w<model.output_types();w++){
+	
+			VectorReal prediction_vector = prediction_vectors.row(testIndex);
+			double log_word_prob = getLogWordProb(model,prediction_vector,w);
+			probs(w)=log_word_prob;
+			//cerr<<"word:"<<model.label_str(w)<<" log_word_prob:"<<exp(log_word_prob)<<endl;
+		} 
+		int maxIndex=-1;
+		probs.maxCoeff(&maxIndex);
+		float epsilon=-5;
+		if (probs(maxIndex) > (probs(testIndex)+epsilon) && maxIndex != testIndex){
+			biggerCount++;
+			cerr<<"actual word:"<<model.label_str(test_corpus.at(testIndex))<<" prob:"<<exp(probs(testIndex))<< " higher prob word:"<<model.label_str(test_corpus.at(maxIndex))<<" prob:"<<exp(probs(maxIndex))<<endl;
+		}
+	}
+	cerr << "percent of words with a higher prob word:"<<biggerCount/model.output_types()<<endl;
+}
 
 Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride) {
   Real p=0.0;
@@ -807,20 +859,7 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
   MatrixReal prediction_vectors = MatrixReal::Zero(test_corpus.size(), word_width);
   for (int i=0; i<context_width; ++i)
     prediction_vectors += model.context_product(i, context_vectors.at(i));
-
-	//check if all word probabilities sum up to 1
-	// double total_log_word_prob=0;
-	// int testIndex=5;
-	// for (int w=0;w<model.output_types();w++){
-	// 
-	// 	VectorReal prediction_vector = prediction_vectors.row(testIndex);
-	// 	double log_word_prob = getLogWordProb(model,prediction_vector,w);
-	// 	cerr<<"word:"<<model.label_str(w)<<" log_word_prob:"<<exp(log_word_prob)<<endl;
-	// 	total_log_word_prob+=exp(log_word_prob);
-	// }
-	// cerr<<"total_log_word_prob:"<<total_log_word_prob<<endl;  
-	// cerr<<"actual word:"<<model.label_str(test_corpus.at(testIndex))<<endl;
-
+	
   {
     #pragma omp master
     cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;

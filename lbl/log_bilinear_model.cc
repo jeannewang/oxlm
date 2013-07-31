@@ -51,7 +51,9 @@ void LogBiLinearModel::init(const ModelData& config, const Dict& labels, bool in
   if (init_weights) {
     //    W.setRandom() /= 10;
     std::random_device rd;
-    std::mt19937 gen(rd());
+    //std::mt19937 gen(rd());
+		unsigned seed=2;
+    std::mt19937 gen(seed);
     std::normal_distribution<Real> gaussian(0,0.1);
     for (int i=0; i<m_data_size; i++)
       W(i) = gaussian(gen);
@@ -92,15 +94,15 @@ void LogBiLinearModel::init(const ModelData& config, const Dict& labels, bool in
 
 #pragma omp master
   if (true) {
-    std::cerr << "===============================" << std::endl;
-    std::cerr << " Created a LogBiLinearModel: "   << std::endl;
-    std::cerr << "  Output Vocab size = "          << num_output_words << std::endl;
-    std::cerr << "  Context Vocab size = "         << num_context_words << std::endl;
-    std::cerr << "  Word Vector size = "           << word_width << std::endl;
-    std::cerr << "  Context size = "               << context_width << std::endl;
-    std::cerr << "  Diagonal = "                   << m_diagonal << std::endl;
-    std::cerr << "  Total parameters = "           << m_data_size << std::endl;
-    std::cerr << "===============================" << std::endl;
+    std::cout << "===============================" << std::endl;
+    std::cout << " Created a LogBiLinearModel: "   << std::endl;
+    std::cout << "  Output Vocab size = "          << num_output_words << std::endl;
+    std::cout << "  Context Vocab size = "         << num_context_words << std::endl;
+    std::cout << "  Word Vector size = "           << word_width << std::endl;
+    std::cout << "  Context size = "               << context_width << std::endl;
+    std::cout << "  Diagonal = "                   << m_diagonal << std::endl;
+    std::cout << "  Total parameters = "           << m_data_size << std::endl;
+    std::cout << "===============================" << std::endl;
   }
 }
 
@@ -128,9 +130,7 @@ void LogBiLinearModelApproximateZ::train(const MatrixReal& contexts, const Vecto
   m_b_approx = VectorReal(approx_vectors); // Z x 1
   { // z_approx initialisation
     std::random_device rd;
-    //std::mt19937 gen(rd());
-		unsigned seed=2;
-    std::mt19937 gen(seed);
+    std::mt19937 gen(rd());
     std::normal_distribution<Real> gaussian(0,0.1);
     for (int j=0; j<m_z_approx.cols(); j++) {
       m_b_approx(j) = gaussian(gen);
