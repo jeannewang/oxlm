@@ -646,7 +646,7 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		//TODO print out vectors make sure they're getting smaller or whatever
 		//TODO play with very small dimensional stuff
 		//TODO take out getLogProb
-		//TODO recheck gradient and latex work!!!!
+		//TODO derive gradient and write in latex !!!!
 		//TODO add in finite diff for all on batches
 		//TODO maybe check if word we want has highest probability of all words in tree
 		
