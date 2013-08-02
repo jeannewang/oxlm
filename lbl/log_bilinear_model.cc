@@ -51,9 +51,9 @@ void LogBiLinearModel::init(const ModelData& config, const Dict& labels, bool in
   if (init_weights) {
     //    W.setRandom() /= 10;
     std::random_device rd;
-    //std::mt19937 gen(rd());
-		unsigned seed=2;
-    std::mt19937 gen(seed);
+    std::mt19937 gen(rd());
+		//unsigned seed=2;
+    //std::mt19937 gen(seed);
     std::normal_distribution<Real> gaussian(0,0.1);
     for (int i=0; i<m_data_size; i++)
       W(i) = gaussian(gen);
