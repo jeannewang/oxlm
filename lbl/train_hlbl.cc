@@ -355,7 +355,28 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 	}
 	recursiveAdaptiveHelper(binaryTree, binaryTree.begin(), allwords,word_width,expected_prediction_vectors);
 	
-	binaryTree=binaryTree.child(binaryTree.begin(), 0);
+	binaryTree=binaryTree.child(binaryTree.begin(), 0); //because there is one extra node
+	
+	{
+		//getting rid of superfluous nodes
+		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
+		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
+			
+			if (!binaryTree.isLeaf(it)){
+				if (binaryTree.number_of_children(it)==1 && !binaryTree.isLeaf(binaryTree.child(it,0)) ){
+				//can delete
+					cout<<"deleting"<<endl;
+					tree<float>::breadth_first_queued_iterator c1=binaryTree.child(it,0);
+					
+					c1=binaryTree.insert_subtree_after(it, c1);
+					binaryTree.erase_children(it);
+					binaryTree.erase(it);
+					it=c1;
+				}
+			}				
+			++it;
+		}
+	}
 	
 	int internalCount=0;
 	{
@@ -390,34 +411,65 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 	}
 	
 	int numChildren=binaryTree.number_of_children(oldNode);
+	cout<<__LINE__<<":"<<"oldnode:"<<(*oldNode)<<" numchildren:"<<numChildren<<endl;
 	if (numWords==1){
 		if (numChildren <= 1){
 			binaryTree.append_child(oldNode,allwords(0));
+			cout<<__LINE__<<":"<<allwords(0)<<endl;
 		}
 		else{
 			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
-			tree<float>::breadth_first_queued_iterator it1=binaryTree.append_child(c1,(*c1));
-			tree<float>::breadth_first_queued_iterator it2=binaryTree.append_child(c1,allwords(0));
-			it1=binaryTree.replace (c1, -1);
+			tree<float>::breadth_first_queued_iterator cNew=binaryTree.append_child(oldNode,-1);
+			tree<float>::breadth_first_queued_iterator subtree1=binaryTree.append_child(cNew,-1); //this needs to be a subtree
+			binaryTree.replace(subtree1,c1);
+			binaryTree.append_child(cNew,allwords(0));
+			binaryTree.erase_children(c1);
+			binaryTree.erase(c1);
+			cout<<__LINE__<<":"<<allwords(0)<<endl;
 		}
 		return;
 	}
 	else if (numWords==2){
 		if(numChildren==0){
-			binaryTree.append_child(oldNode,allwords(0)); 
-			binaryTree.append_child(oldNode,allwords(1));
+			if (oldNode==binaryTree.child(binaryTree.begin(),0)){
+				tree<float>::breadth_first_queued_iterator c1=binaryTree.append_child(oldNode,-1);
+				binaryTree.append_child(c1,allwords(0)); 
+				binaryTree.append_child(c1,allwords(1));
+			}
+			else{
+				binaryTree.append_child(oldNode,allwords(0)); 
+				binaryTree.append_child(oldNode,allwords(1));
+			}
+			cout<<__LINE__<<":"<<allwords(0)<<endl;
+			cout<<__LINE__<<":"<<allwords(1)<<endl;
+		}
+		else if (numChildren==1){
+			tree<float>::breadth_first_queued_iterator c2=binaryTree.append_child(oldNode,-1);
+			binaryTree.append_child(c2,allwords(0));
+			binaryTree.append_child(c2,allwords(1));
+			cout<<__LINE__<<":"<<allwords(0)<<endl;
+			cout<<__LINE__<<":"<<allwords(1)<<endl;
 		}
 		else{
 			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
 			tree<float>::breadth_first_queued_iterator c2=binaryTree.child(oldNode,1);
+			tree<float>::breadth_first_queued_iterator cNew1=binaryTree.append_child(oldNode,-1);
+			tree<float>::breadth_first_queued_iterator cNew2=binaryTree.append_child(oldNode,-1);
 			
-			tree<float>::breadth_first_queued_iterator it1=binaryTree.append_child(c1,(*c1));
-			tree<float>::breadth_first_queued_iterator it2=binaryTree.append_child(c1,allwords(0));
-			it1=binaryTree.replace (c1, -1);
+			tree<float>::breadth_first_queued_iterator subtree1=binaryTree.append_child(cNew1,-1);
+			binaryTree.replace(subtree1,c1);
+			binaryTree.append_child(cNew1,allwords(0));
+			binaryTree.erase_children(c1);
+			binaryTree.erase(c1);
 
-			tree<float>::breadth_first_queued_iterator it3=binaryTree.append_child(c2,(*c2));
-			tree<float>::breadth_first_queued_iterator it4=binaryTree.append_child(c2,allwords(0));
-			it1=binaryTree.replace (c2, -1);
+			tree<float>::breadth_first_queued_iterator subtree2=binaryTree.append_child(cNew2,-1);
+			binaryTree.replace(subtree2,c2);
+			binaryTree.append_child(cNew2,allwords(1));
+			binaryTree.erase_children(c2);
+			binaryTree.erase(c2);
+			
+			cout<<__LINE__<<":"<<allwords(0)<<endl;
+			cout<<__LINE__<<":"<<allwords(1)<<endl;
 		}
 		return;
 	}
@@ -425,7 +477,6 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 		//create new node and attach this to the tree as a child of last node
 		tree<float>::pre_order_iterator newNode=binaryTree.append_child(oldNode,-1); 
 		MatrixReal respons=gaussianMixtureModel(word_width,numWords,expected_prediction_vectors,allwords,true);
-		cout<<__LINE__<<endl;
 		
 		vector<int> group1;
 		vector<int> group2;
