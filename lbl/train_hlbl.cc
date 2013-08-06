@@ -43,6 +43,7 @@ using namespace std;
 using namespace oxlm;
 using namespace Eigen;
 
+const double pi = boost::math::constants::pi<double>();
 
 typedef vector<WordId> Sentence;
 typedef vector<WordId> Corpus;
@@ -55,7 +56,9 @@ double log_sigmoid(double x);
 double log_one_minus_sigmoid(double x);
 double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& prediction_vector, WordId w );
 void highestProbability(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus);
-
+double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar);
+MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize);
+void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors);
 void learn(const variables_map& vm, const ModelData& config);
 
 typedef int TrainingInstance;
@@ -128,7 +131,9 @@ int main(int argc, char **argv) {
     ("verbose,v", "print perplexity for each sentence (1) or input token (2) ")
     ("randomise", "visit the training tokens in random order")
     ("diagonal-contexts", "Use diagonal context matrices (usually faster).")
-		("brown-cluster-in", "Use brown clusters from this path file")
+		("brown-cluster-in", value<string>()->default_value("../browncluster/output.txt"), "Use brown clusters from this path file")
+		("tree-type", value<string>()->default_value("random"), "Tree-types are: random, browncluster, and balanced")
+		("random-model-in", value<string>()->default_value("model"), "Archive of random-tree hlbl model")
     ;
   options_description config_options, cmdline_options;
   config_options.add(generic);
@@ -159,9 +164,10 @@ int main(int argc, char **argv) {
   cout << "# Config Summary" << endl;
   cout << "# order = " << vm["order"].as<int>() << endl;
   if (vm.count("model-in"))
-    cout << "# model-in = " << vm["model-in"].as<string>() << endl;
+   cout << "# model-in = " << vm["model-in"].as<string>() << endl;
   cout << "# model-out = " << vm["model-out"].as<string>() << endl;
   cout << "# input = " << vm["input"].as<string>() << endl;
+	cout << "# brown-cluster-in = " << vm["brown-cluster-in"].as<string>() << endl;
   cout << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
   cout << "# lambda = " << vm["lambda"].as<float>() << endl;
   cout << "# iterations = " << vm["iterations"].as<int>() << endl;
@@ -220,7 +226,6 @@ tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUni
 		while (rand1 == rand2){
 			rand2=die();
 		}
-		cout<<"rand:"<<rand1<<","<<rand2<<endl;
 		multimap< float,tree<float> >::iterator it1 = priQ.begin();
 		multimap< float,tree<float> >::iterator it2 = priQ.begin();
 		for (int i=0;i<rand1;i++){
@@ -281,6 +286,319 @@ tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUni
 	return binaryTree;
 }
 
+template<typename Derived>
+inline bool is_nan(const Eigen::MatrixBase<Derived>& x)
+{
+    return ((x.array() == x.array())).all();
+}
+
+tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinearModel& randModel,Corpus& test_corpus, bool updateBWithUnigram){
+	VectorReal unigram = model.unigram;
+	Dict dict = randModel.label_set();
+	int numWords =dict.size();
+//	assert(dict == model.label_set()); //random model must be of the same dataset
+	
+	tree<float> binaryTree;
+	binaryTree.set_head(-1);
+	
+	int word_width = randModel.config.word_representation_size;
+  int context_width = randModel.config.ngram_order-1;
+
+  int tokens=0;
+  WordId start_id = randModel.label_set().Lookup("<s>");
+  WordId end_id = randModel.label_set().Lookup("</s>");
+
+	//fill context vectors
+  vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(test_corpus.size(), word_width)); 
+  for (int instance=0; instance < test_corpus.size(); ++instance) {
+    const TrainingInstance& t = instance;
+    int context_start = t - context_width;
+    bool sentence_start = (t==0);
+    for (int i=context_width-1; i>=0; --i) {
+      int j=context_start+i;
+      sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
+      int v_i = (sentence_start ? start_id : test_corpus.at(j));
+      context_vectors.at(i).row(instance) = randModel.Q.row(v_i);
+    }
+  }
+
+	//create prediction vectors
+  MatrixReal prediction_vectors = MatrixReal::Zero(test_corpus.size(), word_width);
+  for (int i=0; i<context_width; ++i)
+    prediction_vectors += randModel.context_product(i, context_vectors.at(i));
+
+	MatrixReal expected_prediction_vectors = MatrixReal::Zero(numWords, word_width);
+	VectorReal epv_count = VectorReal::Zero(numWords);
+	for (int instance=0; instance < test_corpus.size(); ++instance) {
+		WordId w = test_corpus.at(instance);
+		expected_prediction_vectors.row(w) += prediction_vectors.row(instance);
+		epv_count(w) += 1;
+	}
+	for(int w=0;w<numWords;w++){
+		if (epv_count(w)==0){
+			std::random_device rd;
+			std::mt19937 gen(rd());
+		  std::normal_distribution<Real> gaussian(0,0.1);
+			for (int k=0; k<word_width; k++){
+				expected_prediction_vectors(w,k) = gaussian(gen);
+			}
+		}
+		else{
+			expected_prediction_vectors.row(w) /= epv_count(w);
+		}
+	}
+	
+	//recursively apply mixture of gaussian clustering into 2 clusters.
+	VectorReal allwords = VectorReal::Zero(numWords);
+	for (int i=0;i<numWords;i++){
+		allwords(i)=i;
+	}
+	recursiveAdaptiveHelper(binaryTree, binaryTree.begin(), allwords,word_width,expected_prediction_vectors);
+	
+	binaryTree=binaryTree.child(binaryTree.begin(), 0);
+	
+	int internalCount=0;
+	{
+		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
+		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
+			
+			if (!binaryTree.isLeaf(it)){
+				
+				if(updateBWithUnigram){
+					//model.B(internalCount)=((float)(*it)/tokenCount); //update with unigram probability
+					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
+				}
+				
+				it=binaryTree.replace (it, internalCount);
+				internalCount++;
+			}
+		++it;
+		}
+	}
+	cerr<<"internalNodes:"<<internalCount<<endl;
+	
+	print_tree(binaryTree,binaryTree.begin(),binaryTree.end(),dict);
+	
+	return binaryTree;
+}
+
+void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors){
+	
+	int numWords=allwords.size();
+	if (numWords==0){
+		return;
+	}
+	
+	int numChildren=binaryTree.number_of_children(oldNode);
+	if (numWords==1){
+		if (numChildren <= 1){
+			binaryTree.append_child(oldNode,allwords(0));
+		}
+		else{
+			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
+			tree<float>::breadth_first_queued_iterator it1=binaryTree.append_child(c1,(*c1));
+			tree<float>::breadth_first_queued_iterator it2=binaryTree.append_child(c1,allwords(0));
+			it1=binaryTree.replace (c1, -1);
+		}
+		return;
+	}
+	else if (numWords==2){
+		if(numChildren==0){
+			binaryTree.append_child(oldNode,allwords(0)); 
+			binaryTree.append_child(oldNode,allwords(1));
+		}
+		else{
+			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
+			tree<float>::breadth_first_queued_iterator c2=binaryTree.child(oldNode,1);
+			
+			tree<float>::breadth_first_queued_iterator it1=binaryTree.append_child(c1,(*c1));
+			tree<float>::breadth_first_queued_iterator it2=binaryTree.append_child(c1,allwords(0));
+			it1=binaryTree.replace (c1, -1);
+
+			tree<float>::breadth_first_queued_iterator it3=binaryTree.append_child(c2,(*c2));
+			tree<float>::breadth_first_queued_iterator it4=binaryTree.append_child(c2,allwords(0));
+			it1=binaryTree.replace (c2, -1);
+		}
+		return;
+	}
+	else{
+		//create new node and attach this to the tree as a child of last node
+		tree<float>::pre_order_iterator newNode=binaryTree.append_child(oldNode,-1); 
+		MatrixReal respons=gaussianMixtureModel(word_width,numWords,expected_prediction_vectors,allwords,true);
+		cout<<__LINE__<<endl;
+		
+		vector<int> group1;
+		vector<int> group2;
+		for (int i=0;i<numWords;i++){
+			if( respons(1,i) >= (1-respons(1,i))){
+				group1.push_back(respons(0,i));
+			}
+			else{
+				group2.push_back(respons(0,i));
+			}
+		}
+		VectorReal group1V=VectorReal::Zero(group1.size());
+		VectorReal group2V=VectorReal::Zero(group2.size());
+		for (int j=0;j<group1.size();j++){
+			group1V(j)=group1[j];
+		}
+		for (int j=0;j<group2.size();j++){
+			group2V(j)=group2[j];
+		}
+		recursiveAdaptiveHelper(binaryTree, newNode, group1V, word_width,expected_prediction_vectors);
+		recursiveAdaptiveHelper(binaryTree, newNode, group2V, word_width,expected_prediction_vectors);
+	}
+	
+}
+
+MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize=true){
+	int numClusters=2;
+	int numDim = word_width;
+	int numIterations=1; //TODO switch this back to 10;
+	double regularizeEpsilon=.001;
+	MatrixReal means = MatrixReal::Zero(numClusters,numDim);
+	vector<MatrixReal> covariances(numClusters, MatrixReal::Zero(numDim, numDim)); 
+	VectorReal mixingCoeffs = VectorReal::Zero(numClusters);
+	
+	/*
+	In general, you can avoid getting ill-conditioned covariance matrices by using one of the following precautions:
+
+	Pre-process your data to remove correlated features.
+	Set 'SharedCov' to true to use an equal covariance matrix for every component.
+	Set 'CovType' to 'diagonal'.
+	Use 'Regularize' to add a very small positive number to the diagonal of every covariance matrix.
+	Try another set of initial values.
+	*/
+	
+	//initalize
+	for (int i=0;i<numWords;i++){
+		if (i<(numWords/2)){
+			means.row(0) += expected_prediction_vectors.row(allwords(i));
+		}
+		else{
+			means.row(1) += expected_prediction_vectors.row(allwords(i));
+		}
+	}
+	means.row(0)/=(numWords/2);
+	means.row(1)/=(numWords-(numWords/2));
+
+	mixingCoeffs(0)=.5;
+	mixingCoeffs(1)=.5;
+	
+	double loglikelihood=log(-1);
+	while (isnan(loglikelihood)){
+		std::random_device rd;
+	  std::mt19937 gen(rd());
+	  std::normal_distribution<Real> gaussian(0,0.1);
+	  for (int i=0; i<numClusters; i++){
+		  for (int j=0; j<numDim; j++){
+			  for (int k=0; k<numDim; k++){
+					covariances.at(i)(j,k)=gaussian(gen);
+				}
+			}
+		}
+	
+		//evaluate the loglikelihood
+		loglikelihood=0;
+		for (int i=0;i<allwords.size();i++){
+			VectorReal x =expected_prediction_vectors.row(allwords(i));
+			VectorReal mean0 =means.row(0);
+			VectorReal mean1 =means.row(1);
+			double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
+			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
+			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
+		}
+	}
+	cout<<"before update loglikelihood:"<<loglikelihood<<endl;
+	
+	MatrixReal respons;
+	int iteration=0;
+	bool notConverged=true;
+	double lastLogLikelihood=loglikelihood;
+	while (iteration<numIterations && notConverged){
+		//E step: calculate the responsibilities for the current parameter values
+		respons=MatrixReal::Zero(2,allwords.size());
+		for (int i=0;i<allwords.size();i++){
+			VectorReal x =expected_prediction_vectors.row(allwords(i));
+			VectorReal mean0 =means.row(0);
+			VectorReal mean1 =means.row(1);
+			double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
+			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
+			double z =mixtureComponent0+mixtureComponent1;
+			respons(0,i)=allwords(i);
+			respons(1,i) = mixtureComponent0/z;
+		}
+	
+		//M step: reestimate the parameters using the current responsibilities
+		double Nk=0;
+		for (int i=0;i<allwords.size();i++){
+			Nk+=respons(1,i);
+		}
+		//zero out
+		means=MatrixReal::Zero(numClusters,numDim);
+		covariances.at(0)=MatrixReal::Zero(numDim, numDim);
+		covariances.at(1)=MatrixReal::Zero(numDim, numDim);
+	
+		//update means
+		for (int i=0;i<allwords.size();i++){
+			VectorReal x =expected_prediction_vectors.row(allwords(i));
+			means.row(0)+=respons(1,i)*x.transpose();
+			means.row(1)+=(1-respons(1,i))*x.transpose();
+		}
+		means.row(0) /=Nk;
+		means.row(1) /=(allwords.size()-Nk);
+		cout<<"N:"<<allwords.size()<<" Nk:"<<Nk<<" N-Nk:"<<allwords.size()-Nk<<endl;
+			
+		//update covariance matrices
+		for (int i=0;i<allwords.size();i++){
+			VectorReal x =expected_prediction_vectors.row(allwords(i));
+			covariances.at(0) += respons(1,i)*(x-means.row(0).transpose())*(x.transpose()-means.row(0));
+			covariances.at(1) += (1-respons(1,i))*(x-means.row(1).transpose())*(x.transpose()-means.row(1));
+			if (regularize){
+				for (int j=0;j<numClusters;j++){
+					for(int k=0;k<numDim;k++){
+						covariances.at(j)(k,k)+=regularizeEpsilon;
+					}
+				}
+			}
+		}
+		covariances.at(0) /= Nk;
+		covariances.at(1) /= (allwords.size()-Nk);
+		//update mixing coeffs
+		mixingCoeffs(0)=Nk/allwords.size();
+		mixingCoeffs(1)=(allwords.size()-Nk)/allwords.size();
+	
+		//evaluate the loglikelihood
+		double loglikelihood=0;
+		for (int i=0;i<allwords.size();i++){
+			VectorReal x =expected_prediction_vectors.row(allwords(i));
+			VectorReal mean0 =means.row(0);
+			VectorReal mean1 =means.row(1);
+			double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
+			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
+			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
+		}
+		cout<<"loglikelihood:"<<loglikelihood<<endl;
+		if (abs(lastLogLikelihood - loglikelihood) < 120){
+			notConverged=false;
+			cout<<"finished in iteration "<<iteration<<endl;
+		}
+		lastLogLikelihood=loglikelihood;
+		iteration++;
+	}
+	return respons;
+}
+
+double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
+	double innerProd=(x-mean).transpose()*covar.inverse()*(x-mean);
+	double determinant=abs(covar.determinant());
+	if (determinant==0){
+		determinant=0.1;
+	}
+	double normalizer = pow(2*pi,x.size()*.5)*pow(determinant,.5);
+	double result= (1/normalizer)*exp(-.5*innerProd);
+	return result;
+}
 
 tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filename, bool updateBWithUnigram){
 	VectorReal unigram = model.unigram;
@@ -471,9 +789,38 @@ void learn(const variables_map& vm, const ModelData& config) {
   }
   model.unigram /= model.unigram.sum();
 
-	//create huffmantree from vocabulary and set B to unigram distribution
-	//model.huffmanTree = createRandomTree(model, true);
-	model.huffmanTree = createBrownClusterTree(model, "../browncluster/output.txt", true);
+	//create binarytree from vocabulary and set B to unigram distribution
+	string treeType=vm["tree-type"].as<string>();
+	if (treeType == "random") {
+		cout <<"Creating Random Tree"<<endl;
+		model.huffmanTree = createRandomTree(model, true);
+		
+	}
+	else if (treeType == "browncluster") {
+			
+		if (!vm.count("brown-cluster-in")){
+			cout<<"Must include option --brown-cluster-in"<<endl;
+			return;
+		}
+		cout <<"Creating Brown Cluster Tree with paths from file:"<<vm["brown-cluster-in"].as<string>()<<endl;
+		model.huffmanTree = createBrownClusterTree(model, vm["brown-cluster-in"].as<string>(), true);
+		
+	}
+	else if (treeType == "balanced") {
+		HuffmanLogBiLinearModel randModel(config, dict, vm.count("diagonal-contexts"));
+		
+		if (!vm.count("random-model-in")) {
+			cout<<"Must include option --random-model-in"<<endl;
+			return;
+		}
+		else{
+	    std::ifstream f(vm["random-model-in"].as<string>().c_str());
+	    boost::archive::text_iarchive ar(f);
+	    ar >> randModel;
+	  }
+		cout<<"Creating Balanced Tree with random tree from archive file:"<<vm["random-model-in"].as<string>()<<endl;
+		model.huffmanTree = createBalancedTree(model, randModel, training_corpus, true);
+	}	
 
 	//get binary decisions per word in huffmantree
 	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
