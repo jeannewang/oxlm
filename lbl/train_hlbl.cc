@@ -25,8 +25,10 @@
 #include <boost/archive/binary_iarchive.hpp>
 
 // Eigen
+#include <Eigen/SVD>
 #include <Eigen/Dense>
 #include <Eigen/Core>
+
 
 // Local
 #include "lbl/log_bilinear_model.h"
@@ -59,6 +61,9 @@ void highestProbability(const HuffmanLogBiLinearModel& model, const Corpus& test
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar);
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize);
 void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors);
+double getUnigram(HuffmanLogBiLinearModel& model, tree<float>& binaryTree, tree<float>::pre_order_iterator node);
+
+
 void learn(const variables_map& vm, const ModelData& config);
 
 typedef int TrainingInstance;
@@ -131,9 +136,10 @@ int main(int argc, char **argv) {
     ("verbose,v", "print perplexity for each sentence (1) or input token (2) ")
     ("randomise", "visit the training tokens in random order")
     ("diagonal-contexts", "Use diagonal context matrices (usually faster).")
-		("brown-cluster-in", value<string>()->default_value("../browncluster/output.txt"), "Use brown clusters from this path file")
+		("tree-in", value<string>()->default_value("../browncluster/output.txt"), "Use tree from this file")
 		("tree-type", value<string>()->default_value("random"), "Tree-types are: random, browncluster, and balanced")
 		("random-model-in", value<string>()->default_value("model"), "Archive of random-tree hlbl model")
+		("tree-out", value<string>()->default_value("tree"), "Write tree to file")
     ;
   options_description config_options, cmdline_options;
   config_options.add(generic);
@@ -167,7 +173,7 @@ int main(int argc, char **argv) {
    cout << "# model-in = " << vm["model-in"].as<string>() << endl;
   cout << "# model-out = " << vm["model-out"].as<string>() << endl;
   cout << "# input = " << vm["input"].as<string>() << endl;
-	cout << "# brown-cluster-in = " << vm["brown-cluster-in"].as<string>() << endl;
+	cout << "# tree-in = " << vm["tree-in"].as<string>() << endl;
   cout << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
   cout << "# lambda = " << vm["lambda"].as<float>() << endl;
   cout << "# iterations = " << vm["iterations"].as<int>() << endl;
@@ -182,6 +188,25 @@ int main(int argc, char **argv) {
   return 0;
 }
 
+void write_out_tree(HuffmanLogBiLinearModel& model, string filename, int trainingSize){
+	//open file
+	std::ofstream f(filename.c_str());
+	
+	tree<float> binaryTree = model.huffmanTree;
+	tree<float>::leaf_iterator itLeaf=binaryTree.begin_leaf();
+	while(itLeaf!=binaryTree.end_leaf() && binaryTree.is_valid(itLeaf)) {
+		
+			//figure out y's for this word
+			int wordIndex=(*itLeaf);
+			for (int i=model.ys[wordIndex].size()-2;i>=0;i--){
+				f<<model.ys[wordIndex][i];
+			}
+			f<<'\t'<<model.label_str(wordIndex)<<'\t'<<model.unigram(wordIndex)*trainingSize<<endl;
+			++itLeaf;
+	}
+	
+	f.close();
+}
 void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict)
 	{
 	if(!tr.is_valid(it)) return;
@@ -386,7 +411,7 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 			if (!binaryTree.isLeaf(it)){
 				
 				if(updateBWithUnigram){
-					//model.B(internalCount)=((float)(*it)/tokenCount); //update with unigram probability
+					model.B(internalCount)=getUnigram(model,binaryTree,it); //update with unigram probability
 					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
 				}
 				
@@ -403,6 +428,19 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 	return binaryTree;
 }
 
+double getUnigram(HuffmanLogBiLinearModel& model,tree<float>& binaryTree, tree<float>::pre_order_iterator node){
+	if (binaryTree.isLeaf(node)){
+		return model.unigram((*node));
+	}
+	else{
+		double result=0;
+		for(int i=0;i<binaryTree.number_of_children(node);i++){
+			result+=getUnigram(model,binaryTree,binaryTree.child(node,i));
+		}
+		return result;
+	}
+}
+
 void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors){
 	
 	int numWords=allwords.size();
@@ -411,7 +449,6 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 	}
 	
 	int numChildren=binaryTree.number_of_children(oldNode);
-	cout<<__LINE__<<":"<<"oldnode:"<<(*oldNode)<<" numchildren:"<<numChildren<<endl;
 	if (numWords==1){
 		if (numChildren <= 1){
 			binaryTree.append_child(oldNode,allwords(0));
@@ -505,7 +542,7 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize=true){
 	int numClusters=2;
 	int numDim = word_width;
-	int numIterations=1; //TODO switch this back to 10;
+	int numIterations=10; 
 	double regularizeEpsilon=.001;
 	MatrixReal means = MatrixReal::Zero(numClusters,numDim);
 	vector<MatrixReal> covariances(numClusters, MatrixReal::Zero(numDim, numDim)); 
@@ -560,7 +597,7 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
 		}
 	}
-	cout<<"before update loglikelihood:"<<loglikelihood<<endl;
+	//cout<<"before update loglikelihood:"<<loglikelihood<<endl;
 	
 	MatrixReal respons;
 	int iteration=0;
@@ -598,7 +635,7 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 		}
 		means.row(0) /=Nk;
 		means.row(1) /=(allwords.size()-Nk);
-		cout<<"N:"<<allwords.size()<<" Nk:"<<Nk<<" N-Nk:"<<allwords.size()-Nk<<endl;
+		//cout<<"N:"<<allwords.size()<<" Nk:"<<Nk<<" N-Nk:"<<allwords.size()-Nk<<endl;
 			
 		//update covariance matrices
 		for (int i=0;i<allwords.size();i++){
@@ -629,10 +666,10 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
 			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
 		}
-		cout<<"loglikelihood:"<<loglikelihood<<endl;
+		//cout<<"loglikelihood:"<<loglikelihood<<endl;
 		if (abs(lastLogLikelihood - loglikelihood) < 120){
 			notConverged=false;
-			cout<<"finished in iteration "<<iteration<<endl;
+			//cout<<"finished in iteration "<<iteration<<endl;
 		}
 		lastLogLikelihood=loglikelihood;
 		iteration++;
@@ -640,8 +677,43 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 	return respons;
 }
 
+MatrixReal pinv(MatrixReal &a)
+{
+    // see : http://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#The_general_case_and_the_SVD_method
+
+    // SVD
+    Eigen::JacobiSVD<MatrixReal> svdA(a, ComputeThinU | ComputeThinV);
+
+    MatrixReal vSingular = svdA.singularValues();
+
+    // Build a diagonal matrix with the Inverted Singular values
+    // The pseudo inverted singular matrix is easy to compute :
+    // is formed by replacing every nonzero entry by its reciprocal (inversing).
+    MatrixReal vPseudoInvertedSingular(svdA.matrixV().cols(),1);
+
+    for (int iRow =0; iRow<vSingular.rows(); iRow++)
+    {
+        if ( fabs(vSingular(iRow))<=1e-10 ) // Todo : Put epsilon in parameter
+        {
+            vPseudoInvertedSingular(iRow,0)=0.;
+        }
+        else
+        {
+            vPseudoInvertedSingular(iRow,0)=1./vSingular(iRow);
+        }
+    }
+
+    // A little optimization here 
+    MatrixReal mAdjointU = svdA.matrixU().adjoint().block(0,0,vSingular.rows(),svdA.matrixU().adjoint().cols());
+
+    // Pseudo-Inversion : V * S * U'
+    MatrixReal a_pinv = (svdA.matrixV() *  vPseudoInvertedSingular.asDiagonal()) * mAdjointU  ;
+		return a_pinv;
+}
+
+
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
-	double innerProd=(x-mean).transpose()*covar.inverse()*(x-mean);
+	double innerProd=(x-mean).transpose()*pinv(covar)*(x-mean);
 	double determinant=abs(covar.determinant());
 	if (determinant==0){
 		determinant=0.1;
@@ -651,7 +723,7 @@ double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
 	return result;
 }
 
-tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filename, bool updateBWithUnigram){
+tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filename, bool updateBWithUnigram, bool addInStartEnd=true){
 	VectorReal unigram = model.unigram;
 	Dict dict = model.label_set();
 	
@@ -724,7 +796,7 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 	}
 	cerr<<"internalNodes:"<<internalCount<<endl;
 	
-	{
+	if(addInStartEnd){
 		bool noStartEnd=true;
 		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
 		int treeDepth=binaryTree.depth(it);
@@ -849,12 +921,12 @@ void learn(const variables_map& vm, const ModelData& config) {
 	}
 	else if (treeType == "browncluster") {
 			
-		if (!vm.count("brown-cluster-in")){
-			cout<<"Must include option --brown-cluster-in"<<endl;
+		if (!vm.count("tree-in")){
+			cout<<"Must include option --tree-in"<<endl;
 			return;
 		}
-		cout <<"Creating Brown Cluster Tree with paths from file:"<<vm["brown-cluster-in"].as<string>()<<endl;
-		model.huffmanTree = createBrownClusterTree(model, vm["brown-cluster-in"].as<string>(), true);
+		cout <<"Creating Brown Cluster Tree with paths from file:"<<vm["tree-in"].as<string>()<<endl;
+		model.huffmanTree = createBrownClusterTree(model, vm["tree-in"].as<string>(), true,true);
 		
 	}
 	else if (treeType == "balanced") {
@@ -871,13 +943,19 @@ void learn(const variables_map& vm, const ModelData& config) {
 	  }
 		cout<<"Creating Balanced Tree with random tree from archive file:"<<vm["random-model-in"].as<string>()<<endl;
 		model.huffmanTree = createBalancedTree(model, randModel, training_corpus, true);
-	}	
+	}
+	else if (treeType != "browncluster" && vm.count("tree-in")){
+		model.huffmanTree = createBrownClusterTree(model, vm["tree-in"].as<string>(), true,false);	
+	}
 
 	//get binary decisions per word in huffmantree
 	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
 	model.ys = pairYs.first;
 	model.ysInternalIndex = pairYs.second;
 
+	if (vm.count("tree-out")) {
+		write_out_tree(model, vm["tree-out"].as<string>(), training_corpus.size());
+  }
 
   VectorReal adaGrad = VectorReal::Zero(model.num_weights());
   VectorReal global_gradient(model.num_weights());
