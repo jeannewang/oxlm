@@ -390,7 +390,7 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 			if (!binaryTree.isLeaf(it)){
 				if (binaryTree.number_of_children(it)==1 && !binaryTree.isLeaf(binaryTree.child(it,0)) ){
 				//can delete
-					cout<<"deleting"<<endl;
+					cerr<<"deleting"<<endl;
 					tree<float>::breadth_first_queued_iterator c1=binaryTree.child(it,0);
 					
 					c1=binaryTree.insert_subtree_after(it, c1);
@@ -452,7 +452,7 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 	if (numWords==1){
 		if (numChildren <= 1){
 			binaryTree.append_child(oldNode,allwords(0));
-			cout<<__LINE__<<":"<<allwords(0)<<endl;
+			cerr<<__LINE__<<":"<<allwords(0)<<endl;
 		}
 		else{
 			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
@@ -462,7 +462,7 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 			binaryTree.append_child(cNew,allwords(0));
 			binaryTree.erase_children(c1);
 			binaryTree.erase(c1);
-			cout<<__LINE__<<":"<<allwords(0)<<endl;
+			cerr<<__LINE__<<":"<<allwords(0)<<endl;
 		}
 		return;
 	}
@@ -477,15 +477,15 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 				binaryTree.append_child(oldNode,allwords(0)); 
 				binaryTree.append_child(oldNode,allwords(1));
 			}
-			cout<<__LINE__<<":"<<allwords(0)<<endl;
-			cout<<__LINE__<<":"<<allwords(1)<<endl;
+			cerr<<__LINE__<<":"<<allwords(0)<<endl;
+			cerr<<__LINE__<<":"<<allwords(1)<<endl;
 		}
 		else if (numChildren==1){
 			tree<float>::breadth_first_queued_iterator c2=binaryTree.append_child(oldNode,-1);
 			binaryTree.append_child(c2,allwords(0));
 			binaryTree.append_child(c2,allwords(1));
-			cout<<__LINE__<<":"<<allwords(0)<<endl;
-			cout<<__LINE__<<":"<<allwords(1)<<endl;
+			cerr<<__LINE__<<":"<<allwords(0)<<endl;
+			cerr<<__LINE__<<":"<<allwords(1)<<endl;
 		}
 		else{
 			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
@@ -505,8 +505,8 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 			binaryTree.erase_children(c2);
 			binaryTree.erase(c2);
 			
-			cout<<__LINE__<<":"<<allwords(0)<<endl;
-			cout<<__LINE__<<":"<<allwords(1)<<endl;
+			cerr<<__LINE__<<":"<<allwords(0)<<endl;
+			cerr<<__LINE__<<":"<<allwords(1)<<endl;
 		}
 		return;
 	}
@@ -597,7 +597,7 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
 		}
 	}
-	//cout<<"before update loglikelihood:"<<loglikelihood<<endl;
+	//cerr<<"before update loglikelihood:"<<loglikelihood<<endl;
 	
 	MatrixReal respons;
 	int iteration=0;
@@ -635,7 +635,7 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 		}
 		means.row(0) /=Nk;
 		means.row(1) /=(allwords.size()-Nk);
-		//cout<<"N:"<<allwords.size()<<" Nk:"<<Nk<<" N-Nk:"<<allwords.size()-Nk<<endl;
+		//cerr<<"N:"<<allwords.size()<<" Nk:"<<Nk<<" N-Nk:"<<allwords.size()-Nk<<endl;
 			
 		//update covariance matrices
 		for (int i=0;i<allwords.size();i++){
@@ -666,10 +666,10 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
 			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
 		}
-		//cout<<"loglikelihood:"<<loglikelihood<<endl;
+		//cerr<<"loglikelihood:"<<loglikelihood<<endl;
 		if (abs(lastLogLikelihood - loglikelihood) < 120){
 			notConverged=false;
-			//cout<<"finished in iteration "<<iteration<<endl;
+			//cerr<<"finished in iteration "<<iteration<<endl;
 		}
 		lastLogLikelihood=loglikelihood;
 		iteration++;
@@ -731,7 +731,7 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 	binaryTree.set_head(0);
 	
 	int tokenCount=0;
-	cout<<"filename:"<<filename<<endl;
+	cerr<<"filename:"<<filename<<endl;
 	std::ifstream in(filename.c_str());
 	string line, token;
 	while (getline(in, line)) {
@@ -744,7 +744,7 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 		string freqstr = token;
 		int freq=atoi(freqstr.c_str());
 		tokenCount+=freq;
-		cout<<"code:"<<code<<" word:"<<word<<" freq:"<<freq<<endl;
+		cerr<<"code:"<<code<<" word:"<<word<<" freq:"<<freq<<endl;
 		
 		tree<float>::pre_order_iterator currentNode=binaryTree.begin();
 		currentNode=binaryTree.replace (currentNode, (*currentNode)+freq);
@@ -785,7 +785,7 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 				
 				if(updateBWithUnigram){
 					model.B(internalCount)=((float)(*it)/tokenCount); //update with unigram probability
-					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
+					//cerr<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
 				}
 				
 				it=binaryTree.replace (it, internalCount);
@@ -881,7 +881,7 @@ void learn(const variables_map& vm, const ModelData& config) {
       while (line_stream >> token) {
         WordId w = dict.Convert(token, true);
         if (w < 0) {
-          cout << token << " " << w << endl;
+          cerr << token << " " << w << endl;
 					w=0;
 					//TODO: deal with unknown words
           //assert(!"Unknown word found in test corpus.");
@@ -913,6 +913,8 @@ void learn(const variables_map& vm, const ModelData& config) {
   model.unigram /= model.unigram.sum();
 
 	//create binarytree from vocabulary and set B to unigram distribution
+	clock_t tree_start=clock();
+	
 	string treeType=vm["tree-type"].as<string>();
 	if (treeType == "random") {
 		cout <<"Creating Random Tree"<<endl;
@@ -947,6 +949,10 @@ void learn(const variables_map& vm, const ModelData& config) {
 	else if (treeType != "browncluster" && vm.count("tree-in")){
 		model.huffmanTree = createBrownClusterTree(model, vm["tree-in"].as<string>(), true,false);	
 	}
+	
+	Real tree_time = (clock()-tree_start) / (Real)CLOCKS_PER_SEC;
+	cout<<"Time to create tree:"<<tree_time<<" seconds"<<endl;
+	
 
 	//get binary decisions per word in huffmantree
 	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);

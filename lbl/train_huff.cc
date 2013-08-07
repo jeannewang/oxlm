@@ -355,8 +355,12 @@ void learn(const variables_map& vm, const ModelData& config) {
   }
   model.unigram /= model.unigram.sum();
 
+
 	//create huffmantree from vocabulary and set B to unigram distribution
+	clock_t tree_start=clock();
 	model.huffmanTree = createHuffmanTree(model, true);
+	Real tree_time = (clock()-tree_start) / (Real)CLOCKS_PER_SEC;
+	cout<<"Time to create tree:"<<tree_time<<" seconds"<<endl;
 
 	//get binary decisions per word in huffmantree
 	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
