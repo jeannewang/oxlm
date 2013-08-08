@@ -421,7 +421,8 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 		++it;
 		}
 	}
-	cerr<<"internalNodes:"<<internalCount<<endl;
+	
+	cerr<<"numleaves:"<<binaryTree.size()-internalCount<<"internalNodes:"<<internalCount<<endl;
 	
 	print_tree(binaryTree,binaryTree.begin(),binaryTree.end(),dict);
 	
@@ -525,6 +526,20 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 				group2.push_back(respons(0,i));
 			}
 		}
+		if (group1.size() == 0 || group2.size() == 0){
+			if (group1.size()==0){
+				for (int i=0;i<numWords/2;i++){
+					group1.push_back(group2.back());
+					group2.pop_back();
+				}
+			}
+			else{
+				for (int i=0;i<numWords/2;i++){
+					group2.push_back(group1.back());
+					group1.pop_back();
+				}
+			}
+		}
 		VectorReal group1V=VectorReal::Zero(group1.size());
 		VectorReal group2V=VectorReal::Zero(group2.size());
 		for (int j=0;j<group1.size();j++){
@@ -539,11 +554,23 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 	
 }
 
+double getLoglikelihood(MatrixReal& expected_prediction_vectors,VectorReal& mixingCoeffs, MatrixReal& means, vector<MatrixReal>& covariances, VectorReal& allwords){
+	double loglikelihood=0;
+	VectorReal mean0 =means.row(0);
+	VectorReal mean1 =means.row(1);
+	for (int i=0;i<allwords.size();i++){
+		VectorReal x =expected_prediction_vectors.row(allwords(i));
+		double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
+		double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
+		loglikelihood+=log(mixtureComponent0+mixtureComponent1);
+	}
+	return loglikelihood;
+}
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize=true){
 	int numClusters=2;
 	int numDim = word_width;
 	int numIterations=10; 
-	double regularizeEpsilon=.001;
+	double regularizeEpsilon=.0001;
 	MatrixReal means = MatrixReal::Zero(numClusters,numDim);
 	vector<MatrixReal> covariances(numClusters, MatrixReal::Zero(numDim, numDim)); 
 	VectorReal mixingCoeffs = VectorReal::Zero(numClusters);
@@ -573,36 +600,45 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 	mixingCoeffs(0)=.5;
 	mixingCoeffs(1)=.5;
 	
-	double loglikelihood=log(-1);
-	while (isnan(loglikelihood)){
-		std::random_device rd;
-	  std::mt19937 gen(rd());
-	  std::normal_distribution<Real> gaussian(0,0.1);
-	  for (int i=0; i<numClusters; i++){
-		  for (int j=0; j<numDim; j++){
-			  for (int k=0; k<numDim; k++){
-					covariances.at(i)(j,k)=gaussian(gen);
-				}
-			}
-		}
-	
-		//evaluate the loglikelihood
-		loglikelihood=0;
-		for (int i=0;i<allwords.size();i++){
-			VectorReal x =expected_prediction_vectors.row(allwords(i));
-			VectorReal mean0 =means.row(0);
-			VectorReal mean1 =means.row(1);
-			double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
-			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
-			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
-		}
+	cerr<<"numwords:"<<numWords<<endl;
+
+	MatrixReal M=MatrixReal::Zero(numWords,numDim);
+	for (int i=0;i<numWords;i++){
+		M.row(i) = expected_prediction_vectors.row(allwords(i));
 	}
-	//cerr<<"before update loglikelihood:"<<loglikelihood<<endl;
+	for (int i=0; i<numClusters; i++){
+		VectorReal ones = VectorReal::Ones(numWords);
+		MatrixReal inner=(M-ones*means.row(i));
+		covariances.at(i)= (1.0/(numWords-1))* inner.transpose() * inner;
+	}
 	
-	MatrixReal respons;
+	//evaluate the loglikelihood
+	double loglikelihood= getLoglikelihood(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
+
+	if (!isfinite(loglikelihood)){
+		covariances.at(0).setIdentity();
+		covariances.at(1).setIdentity();
+		loglikelihood = getLoglikelihood(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
+	}
+
+	cerr<<"before update loglikelihood:"<<loglikelihood<<endl;
+	
+	MatrixReal respons=MatrixReal::Zero(2,allwords.size());
+	for (int i=0;i<allwords.size();i++){
+		VectorReal x =expected_prediction_vectors.row(allwords(i));
+		VectorReal mean0 =means.row(0);
+		VectorReal mean1 =means.row(1);
+		double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
+		double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
+		double z =mixtureComponent0+mixtureComponent1;
+		respons(0,i)=allwords(i);
+		respons(1,i) = mixtureComponent0/z;
+	}
+	
 	int iteration=0;
 	bool notConverged=true;
 	double lastLogLikelihood=loglikelihood;
+	MatrixReal lastrespons=respons;
 	while (iteration<numIterations && notConverged){
 		//E step: calculate the responsibilities for the current parameter values
 		respons=MatrixReal::Zero(2,allwords.size());
@@ -657,20 +693,16 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 		mixingCoeffs(1)=(allwords.size()-Nk)/allwords.size();
 	
 		//evaluate the loglikelihood
-		double loglikelihood=0;
-		for (int i=0;i<allwords.size();i++){
-			VectorReal x =expected_prediction_vectors.row(allwords(i));
-			VectorReal mean0 =means.row(0);
-			VectorReal mean1 =means.row(1);
-			double mixtureComponent0=mixingCoeffs(0)*gaussianCalc(x,mean0,covariances.at(0));
-			double mixtureComponent1=mixingCoeffs(1)*gaussianCalc(x,mean1,covariances.at(1));
-			loglikelihood+=log(mixtureComponent0+mixtureComponent1);
+		double loglikelihood=getLoglikelihood(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
+		cerr<<"loglikelihood:"<<loglikelihood<<endl;
+		if (!isfinite(loglikelihood)){
+			return lastrespons;
 		}
-		//cerr<<"loglikelihood:"<<loglikelihood<<endl;
-		if (abs(lastLogLikelihood - loglikelihood) < 120){
+		if (abs(lastLogLikelihood - loglikelihood) < 100){
 			notConverged=false;
 			//cerr<<"finished in iteration "<<iteration<<endl;
 		}
+		lastrespons=respons;
 		lastLogLikelihood=loglikelihood;
 		iteration++;
 	}
@@ -711,13 +743,21 @@ MatrixReal pinv(MatrixReal &a)
 		return a_pinv;
 }
 
+MatrixReal invDiag(MatrixReal &a){
+	return (1 / a.diagonal().array()).matrix().asDiagonal();
+}
+
 
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
-	double innerProd=(x-mean).transpose()*pinv(covar)*(x-mean);
-	double determinant=abs(covar.determinant());
-	if (determinant==0){
-		determinant=0.1;
+
+	MatrixReal covarDiag=covar.diagonal().asDiagonal();
+	double determinant=abs(covarDiag.determinant());
+	if (determinant==0){ //todo is this underflowing?
+		determinant=1;
 	}
+	MatrixReal invCovar =invDiag(covar);
+	double innerProd=(x-mean).transpose()*invCovar*(x-mean);
+	
 	double normalizer = pow(2*pi,x.size()*.5)*pow(determinant,.5);
 	double result= (1/normalizer)*exp(-.5*innerProd);
 	return result;
@@ -824,7 +864,14 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 
 pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTree){
 		//store y's in vector of vectors
-		int leafCount=(binaryTree.size()/2)+1;
+		int leafCount=0;
+		{
+			tree<float>::leaf_iterator it=binaryTree.begin_leaf();
+			while(it!=binaryTree.end_leaf() && binaryTree.is_valid(it)) {
+				leafCount++;
+					++it;
+			}
+		}
 		vector< vector<int> > ys(leafCount); //one y vector per word
 		vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
 		tree<float>::leaf_iterator itLeaf=binaryTree.begin_leaf();
@@ -841,9 +888,11 @@ pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTr
 					internalIndex[wordIndex].push_back(nodeIndex);
 					//cerr<<(*it)<<" "<<y<<endl;
 					it=tree<float>::parent(it);
+					
 				}
 				++itLeaf;
 		}
+		cerr<<__LINE__<<"problem done?"<<endl;
 		pair< vector< vector<int> >, vector< vector<int> > > returnValue;
 		returnValue.first=ys;
 		returnValue.second=internalIndex;
@@ -960,6 +1009,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 	model.ysInternalIndex = pairYs.second;
 
 	if (vm.count("tree-out")) {
+		cout<<"Writing tree to "<<vm["tree-out"].as<string>()<<endl;
 		write_out_tree(model, vm["tree-out"].as<string>(), training_corpus.size());
   }
 
