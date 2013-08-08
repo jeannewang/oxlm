@@ -45,7 +45,7 @@ using namespace std;
 using namespace oxlm;
 using namespace Eigen;
 
-const double pi = boost::math::constants::pi<double>();
+const double pi = 3.141592653589793238462;
 
 typedef vector<WordId> Sentence;
 typedef vector<WordId> Corpus;
@@ -863,7 +863,7 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 }
 
 pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTree){
-		//store y's in vector of vectors
+		
 		int leafCount=0;
 		{
 			tree<float>::leaf_iterator it=binaryTree.begin_leaf();
@@ -872,6 +872,7 @@ pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTr
 					++it;
 			}
 		}
+		//store y's in vector of vectors
 		vector< vector<int> > ys(leafCount); //one y vector per word
 		vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
 		tree<float>::leaf_iterator itLeaf=binaryTree.begin_leaf();
