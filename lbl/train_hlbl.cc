@@ -51,8 +51,6 @@ typedef vector<WordId> Sentence;
 typedef vector<WordId> Corpus;
 
 void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict);
-tree<float> createRandomTree(Dict& dict);
-tree<float> createHuffmanTree(VectorReal& unigram, Dict& dict);
 pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree);
 double sigmoid(double x);
 double log_sigmoid(double x);
@@ -61,7 +59,7 @@ double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& predicti
 void highestProbability(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus);
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar);
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize);
-void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors);
+void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors,double epsilon);
 double getUnigramForNode(HuffmanLogBiLinearModel& model, tree<float>& binaryTree, tree<float>::pre_order_iterator node);
 int getInternalNodeCount(tree<float> & binaryTree);
 
@@ -141,6 +139,7 @@ int main(int argc, char **argv) {
 		("tree-type", value<string>()->default_value("random"), "Tree-types are: random, browncluster, adaptive, huffman")
 		("random-model-in", value<string>()->default_value("model"), "Archive of random-tree hlbl model")
 		("tree-out", value<string>()->default_value("tree"), "Write tree to file")
+		("epsilon", value<double>()->default_value(0), "Epsilon for adaptive epsilon tree")
     ;
   options_description config_options, cmdline_options;
   config_options.add(generic);
@@ -243,7 +242,7 @@ void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<
 
 tree<float> createHuffmanTree(VectorReal& unigram, Dict& dict){
 
-	multimap<float, tree<float> > priQ;
+	multimap<float, tree<float> , less<float> > priQ;
 	tree<float> huffmanTree;
 	//create huffman tree using unigram freq
    for (size_t i=0; i<dict.size(); i++) {
@@ -405,7 +404,7 @@ tree<float> createReadInTree(Dict& dict, string filename, bool addInStartEnd=tru
 	return binaryTree;
 }
 
-tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& randModel,Corpus& test_corpus){
+tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& randModel,Corpus& test_corpus,double epsilon=0){
 	Dict dict = randModel.label_set();
 	int numWords =dict.size();
 //	assert(dict == model.label_set()); //random model must be of the same dataset
@@ -465,7 +464,7 @@ tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& randModel,Corpus& test_c
 	for (int i=0;i<numWords;i++){
 		allwords(i)=i;
 	}
-	recursiveAdaptiveHelper(binaryTree, binaryTree.begin(), allwords,word_width,expected_prediction_vectors);
+	recursiveAdaptiveHelper(binaryTree, binaryTree.begin(), allwords,word_width,expected_prediction_vectors,epsilon);
 	
 	binaryTree=binaryTree.child(binaryTree.begin(), 0); //because there is one extra node
 	
@@ -507,7 +506,7 @@ double getUnigramForNode(HuffmanLogBiLinearModel& model,tree<float>& binaryTree,
 	}
 }
 
-void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors){
+void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors,double epsilon){
 	
 	int numWords=allwords.size();
 	if (numWords==0){
@@ -584,13 +583,34 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 		vector<int> group1;
 		vector<int> group2;
 		for (int i=0;i<numWords;i++){
-			if( respons(1,i) >= (1-respons(1,i))){
-				group1.push_back(respons(0,i));
+			if (epsilon == 0){ //do normal adaptive
+				if( respons(1,i) >= (1-respons(1,i))){
+					group1.push_back(respons(0,i));
+				}
+				else{
+					group2.push_back(respons(0,i));
+				}
 			}
-			else{
-				group2.push_back(respons(0,i));
+			else{ //do adaptive(epsilon)
+				if ((respons(1,i) >= .5-epsilon) && (respons(1,i) <= .5+epsilon) && ((1-respons(1,i)) >= .5-epsilon) && ((1-respons(1,i)) <= .5+epsilon) ){
+					group1.push_back(respons(0,i));
+					group2.push_back(respons(0,i));
+				}
+				else if( respons(1,i) >= (1-respons(1,i))){
+					group1.push_back(respons(0,i));
+				}
+				else{
+					group2.push_back(respons(0,i));
+				}
 			}
 		}
+		if (group1.size() == numWords && group2.size()!=0){ //not shrinking
+				group1.erase(group1.begin());
+		}
+		if (group2.size() == numWords && group1.size()!=0){ //not shrinking
+				group2.pop_back();
+		}
+		
 		if (group1.size() == 0 || group2.size() == 0){
 			if (group1.size()==0){
 				for (int i=0;i<numWords/2;i++){
@@ -613,8 +633,8 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 		for (int j=0;j<group2.size();j++){
 			group2V(j)=group2[j];
 		}
-		recursiveAdaptiveHelper(binaryTree, newNode, group1V, word_width,expected_prediction_vectors);
-		recursiveAdaptiveHelper(binaryTree, newNode, group2V, word_width,expected_prediction_vectors);
+		recursiveAdaptiveHelper(binaryTree, newNode, group1V, word_width,expected_prediction_vectors,epsilon);
+		recursiveAdaptiveHelper(binaryTree, newNode, group2V, word_width,expected_prediction_vectors,epsilon);
 	}
 	
 }
@@ -907,19 +927,27 @@ void learn(const variables_map& vm, const ModelData& config) {
 		
 	}
 	else if (treeType == "adaptive") {
-		HuffmanLogBiLinearModel randModel(config, dict, vm.count("diagonal-contexts"));
 		
-		if (!vm.count("random-model-in")) {
-			cout<<"Must include option --random-model-in"<<endl;
+		
+		if (!vm.count("random-model-in") || !vm.count("tree-in")) {
+			cout<<"Must include option --random-model-in and --tree-in"<<endl;
 			return;
 		}
-		else{
-	    std::ifstream f(vm["random-model-in"].as<string>().c_str());
-	    boost::archive::text_iarchive ar(f);
-	    ar >> randModel;
-	  }
+		tree<float> randomTree = createReadInTree(dict, vm["tree-in"].as<string>(),false);
+		int internalNodeCount = getInternalNodeCount(randomTree);
+		HuffmanLogBiLinearModel randModel(config, dict, vm.count("diagonal-contexts"),randomTree,internalNodeCount);
+		
+    std::ifstream f(vm["random-model-in"].as<string>().c_str());
+    boost::archive::text_iarchive ar(f);
+    ar >> randModel;
+	  
 		cout<<"Creating Adaptive Tree with random tree from archive file:"<<vm["random-model-in"].as<string>()<<endl;
-		binaryTree = createAdaptiveTree(randModel, training_corpus);
+		if (vm.count("epsilon")){
+			binaryTree = createAdaptiveTree(randModel, training_corpus,vm["epsilon"].as<double>());
+		}
+		else{
+			binaryTree = createAdaptiveTree(randModel, training_corpus);
+		}
 	}
 	else if (treeType == "huffman"){
 		cout<<"Creating Huffman Tree"<<endl;
@@ -927,9 +955,15 @@ void learn(const variables_map& vm, const ModelData& config) {
 	}
 	else if (treeType == "huffmanOvercomplete"){
 		cout<<"Creating Huffman Tree Overcomplete"<<endl;
-		tree<float> huffTree=createHuffmanTree(unigram, dict);
-		tree<float> huffTree2=huffTree.subtree (huffTree.begin(), huffTree.end());
-		binaryTree=huffTree;
+		tree<float> subtree1=createHuffmanTree(unigram, dict);
+		tree<float> subtree2=createRandomTree(dict);
+		tree<float> newTree;
+		newTree.set_head(-1);
+		tree<float>::breadth_first_queued_iterator c1=newTree.append_child(newTree.begin());
+		newTree.insert_subtree(c1,subtree1.begin());
+		newTree.insert_subtree(c1,subtree2.begin());
+		newTree.erase(c1);
+		binaryTree=newTree;		
 	}
 	else if (treeType != "browncluster" && vm.count("tree-in")){
 		binaryTree = createReadInTree(dict, vm["tree-in"].as<string>(),false);	
@@ -978,6 +1012,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 			 if(updateBWithUnigram){
 			 		model.B(internalCount)=getUnigramForNode(model, model.huffmanTree, it); //update with unigram probability
 			 	}
+			it=model.huffmanTree.replace (it, model.B(internalCount));
 			internalCount++;
 		}
 		++it;
