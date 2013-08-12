@@ -52,7 +52,8 @@ typedef vector<WordId> Corpus;
 
 void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict);
 tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram);
-pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& huffmanTree);
+tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram);
+pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree);
 double sigmoid(double x);
 double log_sigmoid(double x);
 double log_one_minus_sigmoid(double x);
@@ -61,7 +62,7 @@ void highestProbability(const HuffmanLogBiLinearModel& model, const Corpus& test
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar);
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize);
 void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors);
-double getUnigram(HuffmanLogBiLinearModel& model, tree<float>& binaryTree, tree<float>::pre_order_iterator node);
+double getUnigramForNode(HuffmanLogBiLinearModel& model, tree<float>& binaryTree, tree<float>::pre_order_iterator node);
 
 
 void learn(const variables_map& vm, const ModelData& config);
@@ -137,7 +138,7 @@ int main(int argc, char **argv) {
     ("randomise", "visit the training tokens in random order")
     ("diagonal-contexts", "Use diagonal context matrices (usually faster).")
 		("tree-in", value<string>()->default_value("../browncluster/output.txt"), "Use tree from this file")
-		("tree-type", value<string>()->default_value("random"), "Tree-types are: random, browncluster, and balanced")
+		("tree-type", value<string>()->default_value("random"), "Tree-types are: random, browncluster, adaptive, huffman")
 		("random-model-in", value<string>()->default_value("model"), "Archive of random-tree hlbl model")
 		("tree-out", value<string>()->default_value("tree"), "Write tree to file")
     ;
@@ -198,10 +199,12 @@ void write_out_tree(HuffmanLogBiLinearModel& model, string filename, int trainin
 		
 			//figure out y's for this word
 			int wordIndex=(*itLeaf);
-			for (int i=model.ys[wordIndex].size()-2;i>=0;i--){
-				f<<model.ys[wordIndex][i];
+			for (int winstances=0;winstances<model.ys[wordIndex].size();winstances++){
+				for (int i=model.ys[wordIndex][winstances].size()-2;i>=0;i--){
+					f<<model.ys[wordIndex][winstances][i];
+				}
+				f<<'\t'<<model.label_str(wordIndex)<<'\t'<<model.unigram(wordIndex)/model.ys[wordIndex].size()*trainingSize<<endl;
 			}
-			f<<'\t'<<model.label_str(wordIndex)<<'\t'<<model.unigram(wordIndex)*trainingSize<<endl;
 			++itLeaf;
 	}
 	
@@ -227,6 +230,76 @@ void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<
 	cerr << "-----" << endl;
 	}
 
+tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram){
+
+	VectorReal unigram = model.unigram;
+	Dict dict = model.label_set();
+
+	multimap<float, tree<float> > priQ;
+	tree<float> huffmanTree;
+	//create huffman tree using unigram freq
+   for (size_t i=0; i<dict.size(); i++) {
+		//make new tree node
+		tree<float> node;
+		node.set_head(i); // key is index into vocabulary 
+		priQ.insert( pair<float,tree<float> >( unigram(i), node )); //lowest probability in front
+   }
+	while(priQ.size() >1){
+		//Get the two nodes of highest priority (lowest frequency) from the queue
+		multimap< float,tree<float> >::iterator it1 = priQ.begin();
+		multimap< float,tree<float> >::iterator it2 = it1++;
+		//Create a new internal node with these two nodes as children and with probability equal to the sum of the two nodes' probabilities.
+		//Add the new node to the queue.
+		float priority=(*it1).first+(*it2).first;
+		tree<float> node;
+		node.set_head(priority);
+		tree<float> t1=(*it1).second;
+		tree<float> t2=(*it2).second;
+		node.append_children(node.begin(),t1.begin(),t1.end());
+		node.append_children(node.begin(),t2.begin(),t2.end());
+		priQ.insert( pair<float,tree<float> >( priority, node ));
+		//Remove the two nodes of highest priority (lowest probability) from the queue
+		priQ.erase(it1);
+		priQ.erase(it2);
+	}
+	cerr<<"finished priQ"<<endl;
+	//The remaining node is the root node and the tree is complete.
+	huffmanTree=(*priQ.begin()).second;
+
+	//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into R matrix
+	int leafCount=0;
+	{
+		tree<float>::leaf_iterator it=huffmanTree.begin_leaf();
+		while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
+			leafCount++;
+				++it;
+		}
+	}
+
+	cerr<<"size:"<<huffmanTree.size()<<endl;
+	cerr<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
+
+	int internalCount=0;
+	{
+		tree<float>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
+		while(it!=huffmanTree.end_breadth_first() && huffmanTree.is_valid(it)) {
+			if (!huffmanTree.isLeaf(it)){
+				if(updateBWithUnigram){
+					model.B(internalCount)=(*it); //update with unigram probability
+					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;
+				}
+				it=huffmanTree.replace (it, internalCount);
+				internalCount++;
+			}
+			++it;
+		}
+	}
+	cerr<<"internalNodes:"<<internalCount<<endl;
+
+	print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end(),dict);
+	return huffmanTree;
+}
+	
 tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram){
 	
 	VectorReal unigram = model.unigram;
@@ -311,13 +384,7 @@ tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUni
 	return binaryTree;
 }
 
-template<typename Derived>
-inline bool is_nan(const Eigen::MatrixBase<Derived>& x)
-{
-    return ((x.array() == x.array())).all();
-}
-
-tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinearModel& randModel,Corpus& test_corpus, bool updateBWithUnigram){
+tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinearModel& randModel,Corpus& test_corpus, bool updateBWithUnigram){
 	VectorReal unigram = model.unigram;
 	Dict dict = randModel.label_set();
 	int numWords =dict.size();
@@ -411,7 +478,7 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 			if (!binaryTree.isLeaf(it)){
 				
 				if(updateBWithUnigram){
-					model.B(internalCount)=getUnigram(model,binaryTree,it); //update with unigram probability
+					model.B(internalCount)=getUnigramForNode(model,binaryTree,it); //update with unigram probability
 					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
 				}
 				
@@ -429,14 +496,14 @@ tree<float> createBalancedTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 	return binaryTree;
 }
 
-double getUnigram(HuffmanLogBiLinearModel& model,tree<float>& binaryTree, tree<float>::pre_order_iterator node){
+double getUnigramForNode(HuffmanLogBiLinearModel& model,tree<float>& binaryTree, tree<float>::pre_order_iterator node){
 	if (binaryTree.isLeaf(node)){
 		return model.unigram((*node));
 	}
 	else{
 		double result=0;
 		for(int i=0;i<binaryTree.number_of_children(node);i++){
-			result+=getUnigram(model,binaryTree,binaryTree.child(node,i));
+			result+=getUnigramForNode(model,binaryTree,binaryTree.child(node,i));
 		}
 		return result;
 	}
@@ -554,7 +621,7 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 	
 }
 
-double getLoglikelihood(MatrixReal& expected_prediction_vectors,VectorReal& mixingCoeffs, MatrixReal& means, vector<MatrixReal>& covariances, VectorReal& allwords){
+double getLoglikelihoodGMM(MatrixReal& expected_prediction_vectors,VectorReal& mixingCoeffs, MatrixReal& means, vector<MatrixReal>& covariances, VectorReal& allwords){
 	double loglikelihood=0;
 	VectorReal mean0 =means.row(0);
 	VectorReal mean1 =means.row(1);
@@ -566,6 +633,7 @@ double getLoglikelihood(MatrixReal& expected_prediction_vectors,VectorReal& mixi
 	}
 	return loglikelihood;
 }
+
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize=true){
 	int numClusters=2;
 	int numDim = word_width;
@@ -613,12 +681,12 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 	}
 	
 	//evaluate the loglikelihood
-	double loglikelihood= getLoglikelihood(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
+	double loglikelihood= getLoglikelihoodGMM(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
 
 	if (!isfinite(loglikelihood)){
 		covariances.at(0).setIdentity();
 		covariances.at(1).setIdentity();
-		loglikelihood = getLoglikelihood(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
+		loglikelihood = getLoglikelihoodGMM(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
 	}
 
 	cerr<<"before update loglikelihood:"<<loglikelihood<<endl;
@@ -693,7 +761,7 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 		mixingCoeffs(1)=(allwords.size()-Nk)/allwords.size();
 	
 		//evaluate the loglikelihood
-		double loglikelihood=getLoglikelihood(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
+		double loglikelihood=getLoglikelihoodGMM(expected_prediction_vectors,mixingCoeffs, means, covariances, allwords);
 		cerr<<"loglikelihood:"<<loglikelihood<<endl;
 		if (!isfinite(loglikelihood)){
 			return lastrespons;
@@ -743,11 +811,6 @@ MatrixReal pinv(MatrixReal &a)
 		return a_pinv;
 }
 
-MatrixReal invDiag(MatrixReal &a){
-	return (1 / a.diagonal().array()).matrix().asDiagonal();
-}
-
-
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
 
 	MatrixReal covarDiag=covar.diagonal().asDiagonal();
@@ -755,15 +818,15 @@ double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
 	if (determinant==0){ //todo is this underflowing?
 		determinant=1;
 	}
-	MatrixReal invCovar =invDiag(covar);
+	MatrixReal invCovar =covarDiag.inverse();
 	double innerProd=(x-mean).transpose()*invCovar*(x-mean);
 	
 	double normalizer = pow(2*pi,x.size()*.5)*pow(determinant,.5);
-	double result= (1/normalizer)*exp(-.5*innerProd);
+	double result= (1.0/normalizer)*exp(-.5*innerProd);
 	return result;
 }
 
-tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filename, bool updateBWithUnigram, bool addInStartEnd=true){
+tree<float> createReadInTree(HuffmanLogBiLinearModel& model, string filename, bool updateBWithUnigram, bool addInStartEnd=true){
 	VectorReal unigram = model.unigram;
 	Dict dict = model.label_set();
 	
@@ -862,7 +925,7 @@ tree<float> createBrownClusterTree(HuffmanLogBiLinearModel& model, string filena
 	return binaryTree;
 }
 
-pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTree){
+pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree){
 		
 		int leafCount=0;
 		{
@@ -873,8 +936,8 @@ pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTr
 			}
 		}
 		//store y's in vector of vectors
-		vector< vector<int> > ys(leafCount); //one y vector per word
-		vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
+		vector< vector< vector<int> > > ys(leafCount); //one y vector per word
+		vector< vector < vector<int> > >internalIndex(leafCount); //one internal index vector per word
 		tree<float>::leaf_iterator itLeaf=binaryTree.begin_leaf();
 		while(itLeaf!=binaryTree.end_leaf() && binaryTree.is_valid(itLeaf)) {
 			
@@ -882,19 +945,22 @@ pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& binaryTr
 				int wordIndex=(*itLeaf);
 				tree<float>::leaf_iterator it;
 				it=itLeaf;
+				vector<int> ys_wordInstance;
+				vector<int> internalIndex_wordInstance;
 				while(it!=NULL && it!=binaryTree.end() && binaryTree.is_valid(it)) {
 					int y=binaryTree.index(it);
-					ys[wordIndex].push_back(y); //order is from the leaf to the root
+					ys_wordInstance.push_back(y); //order is from the leaf to the root
 					int nodeIndex=(int)(*it);
-					internalIndex[wordIndex].push_back(nodeIndex);
+					internalIndex_wordInstance.push_back(nodeIndex);
 					//cerr<<(*it)<<" "<<y<<endl;
 					it=tree<float>::parent(it);
 					
 				}
+				ys[wordIndex].push_back(ys_wordInstance);
+				internalIndex[wordIndex].push_back(internalIndex_wordInstance);
 				++itLeaf;
 		}
-		cerr<<__LINE__<<"problem done?"<<endl;
-		pair< vector< vector<int> >, vector< vector<int> > > returnValue;
+		pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > returnValue;
 		returnValue.first=ys;
 		returnValue.second=internalIndex;
 		return returnValue;
@@ -978,10 +1044,10 @@ void learn(const variables_map& vm, const ModelData& config) {
 			return;
 		}
 		cout <<"Creating Brown Cluster Tree with paths from file:"<<vm["tree-in"].as<string>()<<endl;
-		model.huffmanTree = createBrownClusterTree(model, vm["tree-in"].as<string>(), true,true);
+		model.huffmanTree = createReadInTree(model, vm["tree-in"].as<string>(), true,true);
 		
 	}
-	else if (treeType == "balanced") {
+	else if (treeType == "adaptive") {
 		HuffmanLogBiLinearModel randModel(config, dict, vm.count("diagonal-contexts"));
 		
 		if (!vm.count("random-model-in")) {
@@ -993,11 +1059,21 @@ void learn(const variables_map& vm, const ModelData& config) {
 	    boost::archive::text_iarchive ar(f);
 	    ar >> randModel;
 	  }
-		cout<<"Creating Balanced Tree with random tree from archive file:"<<vm["random-model-in"].as<string>()<<endl;
-		model.huffmanTree = createBalancedTree(model, randModel, training_corpus, true);
+		cout<<"Creating Adaptive Tree with random tree from archive file:"<<vm["random-model-in"].as<string>()<<endl;
+		model.huffmanTree = createAdaptiveTree(model, randModel, training_corpus, true);
+	}
+	else if (treeType == "huffman"){
+		cout<<"Creating Huffman Tree"<<endl;
+		model.huffmanTree=createHuffmanTree(model, true);
+	}
+	else if (treeType == "huffmanOvercomplete"){
+		cout<<"Creating Huffman Tree Overcomplete"<<endl;
+		tree<float> huffTree=createHuffmanTree(model, true);
+		tree<float> huffTree2=huffTree.subtree (huffTree.begin(), huffTree.end());
+		model.huffmanTree=huffTree;
 	}
 	else if (treeType != "browncluster" && vm.count("tree-in")){
-		model.huffmanTree = createBrownClusterTree(model, vm["tree-in"].as<string>(), true,false);	
+		model.huffmanTree = createReadInTree(model, vm["tree-in"].as<string>(), true,false);	
 	}
 	
 	Real tree_time = (clock()-tree_start) / (Real)CLOCKS_PER_SEC;
@@ -1005,7 +1081,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 	
 
 	//get binary decisions per word in huffmantree
-	pair< vector< vector<int> >, vector< vector<int> > > pairYs = getYs(model.huffmanTree);
+	pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > pairYs = getYs(model.huffmanTree);
 	model.ys = pairYs.first;
 	model.ysInternalIndex = pairYs.second;
 
@@ -1023,12 +1099,13 @@ void learn(const variables_map& vm, const ModelData& config) {
   {
     //////////////////////////////////////////////
     // setup the gradient matrices
+ 		int num_nodes = model.labels(); //TODO change size of R
     int num_words = model.labels();
     int word_width = model.config.word_representation_size;
     int context_width = model.config.ngram_order-1;
 
-    int R_size = num_words*word_width;
-    int Q_size = R_size;
+    int R_size = num_nodes*word_width;
+    int Q_size = num_words*word_width;
     int C_size = (vm.count("diagonal-contexts") ? word_width : word_width*word_width);
     int B_size = num_words;
     int M_size = context_width;
@@ -1220,28 +1297,30 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 		double log_word_prob = 0;
 
     // do the gradient updates for R and B and compute objective function:
-		for (int i=model.ys[w].size()-2; i>=0;i--){
-			int y=model.ys[w][i];
-			int yIndex=model.ysInternalIndex[w][i+1];
-			//cout<<"w:"<<model.label_str(w)<<" y:"<<y<<" yIndex:"<<yIndex<<endl;
-			Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
+		for (int winstances=0;winstances<model.ys[w].size();winstances++){
+			for (int i=model.ys[w][winstances].size()-2; i>=0;i--){
+				int y=model.ys[w][winstances][i];
+				int yIndex=model.ysInternalIndex[w][winstances][i+1];
+				//cout<<"w:"<<model.label_str(w)<<" y:"<<y<<" yIndex:"<<yIndex<<endl;
+				Real h = (model.R.row(yIndex) * prediction_vectors.row(instance).transpose()) + model.B(yIndex);
 			
-			//for computing objective function
-			double binary_conditional_prob = ((y==1) ? log_sigmoid(h) : log_one_minus_sigmoid(h) ) ;		
+				//for computing objective function
+				double binary_conditional_prob = ((y==1) ? log_sigmoid(h) : log_one_minus_sigmoid(h) ) ;		
 						
-			//for computing R and B gradients
-			rhat=prediction_vectors.row(instance);
-			//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
-			double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
-			R_gradient_contribution = gradientScalar*rhat;
-			double B_gradient_contribution = gradientScalar;
+				//for computing R and B gradients
+				rhat=prediction_vectors.row(instance);
+				//double gradientScalar=((y==1) ? ( (h>0) ? sigmoid(-h) : sigmoid(h) ) : (sigmoid(-h)-1) ) ; //gradient
+				double gradientScalar=((y==1) ? ( -sigmoid(-h) ) : sigmoid(h) ) ; //negative gradient
+				R_gradient_contribution = gradientScalar*rhat;
+				double B_gradient_contribution = gradientScalar;
 
-      /////// Added for context gradient update /////// 
-  		nodeRepresentations.row(instance) += (gradientScalar*model.R.row(yIndex));
+	      /////// Added for context gradient update /////// 
+	  		nodeRepresentations.row(instance) += (gradientScalar*model.R.row(yIndex));
 						 
-			log_word_prob += binary_conditional_prob; //multiplying in log space
-			g_R.row(yIndex) += R_gradient_contribution;
-			g_B(yIndex) += B_gradient_contribution;
+				log_word_prob += binary_conditional_prob; //multiplying in log space
+				g_R.row(yIndex) += R_gradient_contribution;
+				g_B(yIndex) += B_gradient_contribution;
+			}
 		}
 		//compute objective function
 		assert(isfinite(log_word_prob));
@@ -1394,17 +1473,17 @@ Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus,
 double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& prediction_vector, WordId w ){
 	
 	double log_word_prob = 0;
-	
-	for (int i=model.ys[w].size()-2; i>=0;i--){
+	for (int winstances=0;winstances<model.ys[w].size();winstances++){
+		for (int i=model.ys[w][winstances].size()-2; i>=0;i--){
 		
-		int y=model.ys[w][i];
-		int yIndex=model.ysInternalIndex[w][i+1]; //get parent node
-		Real wcs = (model.R.row(yIndex) * prediction_vector.matrix()) + model.B(yIndex);
-		double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;		
-		log_word_prob += binary_conditional_prob; //multiplying in log space	
+			int y=model.ys[w][winstances][i];
+			int yIndex=model.ysInternalIndex[w][winstances][i+1]; //get parent node
+			Real wcs = (model.R.row(yIndex) * prediction_vector.matrix()) + model.B(yIndex);
+			double binary_conditional_prob = ((y==1) ? log_sigmoid(wcs) : log_one_minus_sigmoid(wcs) ) ;		
+			log_word_prob += binary_conditional_prob; //multiplying in log space	
 			
+		}
 	}
-	
   assert(isfinite(log_word_prob));
 	return log_word_prob;
 	

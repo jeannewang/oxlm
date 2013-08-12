@@ -266,31 +266,41 @@ tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUn
 }
 
 pair< vector< vector<int> >, vector< vector<int> > > getYs(tree<float>& huffmanTree){
-		//store y's in vector of vectors
-		int leafCount=(huffmanTree.size()/2)+1;
-		vector< vector<int> > ys(leafCount); //one y vector per word
-		vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
-		tree<float>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
-		while(itLeaf!=huffmanTree.end_leaf() && huffmanTree.is_valid(itLeaf)) {
-			
-				//figure out y's for this word
-				int wordIndex=(*itLeaf);
-				tree<float>::leaf_iterator it;
-				it=itLeaf;
-				while(it!=NULL && it!=huffmanTree.end() && huffmanTree.is_valid(it)) {
-					int y=huffmanTree.index(it);
-					ys[wordIndex].push_back(y); //order is from the leaf to the root
-					int nodeIndex=(int)(*it);
-					internalIndex[wordIndex].push_back(nodeIndex);
-					//cerr<<(*it)<<" "<<y<<endl;
-					it=tree<float>::parent(it);
-				}
-				++itLeaf;
+	
+	int leafCount=0;
+	{
+		tree<float>::leaf_iterator it=huffmanTree.begin_leaf();
+		while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
+			leafCount++;
+				++it;
 		}
-		pair< vector< vector<int> >, vector< vector<int> > > returnValue;
-		returnValue.first=ys;
-		returnValue.second=internalIndex;
-		return returnValue;
+	}
+	
+	//store y's in vector of vectors of vectors
+	
+	vector< vector<int> > ys(leafCount); //one y vector per word node instance
+	vector< vector<int> > internalIndex(leafCount); //one internal index vector per word
+	tree<float>::leaf_iterator itLeaf=huffmanTree.begin_leaf();
+	while(itLeaf!=huffmanTree.end_leaf() && huffmanTree.is_valid(itLeaf)) {
+		
+			//figure out y's for this word
+			int wordIndex=(*itLeaf);
+			tree<float>::leaf_iterator it;
+			it=itLeaf;
+			while(it!=NULL && it!=huffmanTree.end() && huffmanTree.is_valid(it)) {
+				int y=huffmanTree.index(it);
+				ys[wordIndex].push_back(y); //order is from the leaf to the root
+				int nodeIndex=(int)(*it);
+				internalIndex[wordIndex].push_back(nodeIndex);
+				//cerr<<(*it)<<" "<<y<<endl;
+				it=tree<float>::parent(it);
+			}
+			++itLeaf;
+	}
+	pair< vector< vector<int> >, vector< vector<int> > > returnValue;
+	returnValue.first=ys;
+	returnValue.second=internalIndex;
+	return returnValue;
 }
 
 void learn(const variables_map& vm, const ModelData& config) {

@@ -248,36 +248,17 @@ public:
   friend class boost::serialization::access;
 	template<class Archive>
 	void save(Archive & ar, const unsigned int version) const {
-    // ar << config;
-    // ar << m_labels;
-    // ar << m_diagonal;
-    // ar << boost::serialization::make_array(m_data, m_data_size);
-    // 
-    // int unigram_len=unigram.rows();
-    // ar << unigram_len;
-    // ar << boost::serialization::make_array(unigram.data(), unigram_len);
 		std::cout<<"called huffSave save"<<std::endl;
   }
 
   template<class Archive>
   void load(Archive & ar, const unsigned int version) {
-    // ar >> config;
-    // ar >> m_labels;
-    // ar >> m_diagonal;
-    // delete [] m_data;
-    // init(config, m_labels, false);
-    // ar >> boost::serialization::make_array(m_data, m_data_size);
-    // 
-    // int unigram_len=0;
-    // ar >> unigram_len;
-    // unigram = VectorReal(unigram_len);
-    // ar >> boost::serialization::make_array(unigram.data(), unigram_len);
   }
 
 public:
   tree<float> huffmanTree;
-  std::vector< std::vector<int> > ys;
-  std::vector< std::vector<int> > ysInternalIndex;
+  std::vector< std::vector< std::vector<int> > > ys;
+  std::vector< std::vector< std::vector<int> > > ysInternalIndex;
 
 private:
 };

@@ -44,6 +44,9 @@ train_mlbl: train_mlbl.o $(local_objs)
 train_z: train_z.o $(local_objs)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
+print: printToFile.o $(local_objs)
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
 %.o: %.cc
 	${CXX} $(CXXFLAGS) -c $< -o $@
 
