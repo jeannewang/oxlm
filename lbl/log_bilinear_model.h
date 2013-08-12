@@ -121,7 +121,6 @@ virtual ~LogBiLinearModel() { delete [] m_data; }
     int unigram_len=unigram.rows();
     ar << unigram_len;
     ar << boost::serialization::make_array(unigram.data(), unigram_len);
-		std::cout<<"called parent save"<<std::endl;
   }
 
   template<class Archive>
@@ -243,20 +242,28 @@ private:
 
 class HuffmanLogBiLinearModel: public LogBiLinearModel {
 public:
-  HuffmanLogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal);
+	HuffmanLogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal);
+  HuffmanLogBiLinearModel(const ModelData& config, const Dict& labels, bool diagonal,tree<float>& binaryTree,int internalNodeCount);
 
   friend class boost::serialization::access;
 	template<class Archive>
 	void save(Archive & ar, const unsigned int version) const {
-		std::cout<<"called huffSave save"<<std::endl;
+		//std::cout<<"called huffSave save"<<std::endl;
   }
 
   template<class Archive>
   void load(Archive & ar, const unsigned int version) {
   }
 
+	int output_types() const { return internalNodeCount; }
+	
+	virtual void init(const ModelData& config, const Dict& labels, bool init_weights=false);
+  virtual void allocate_data(const ModelData& config);
+	int num_weights() const { return m_data_size; }
+
 public:
   tree<float> huffmanTree;
+	int internalNodeCount;
   std::vector< std::vector< std::vector<int> > > ys;
   std::vector< std::vector< std::vector<int> > > ysInternalIndex;
 

@@ -292,8 +292,96 @@ FactoredOutputLogBiLinearModel::FactoredOutputLogBiLinearModel(const ModelData& 
 HuffmanLogBiLinearModel::HuffmanLogBiLinearModel(const ModelData& config, 
                                                                const Dict& labels, 
                                                                bool diagonal) 
-: LogBiLinearModel(config, labels, diagonal) {
+: LogBiLinearModel(config, labels, diagonal){
 	//TODO: update save and load model to include tree
+}
+
+HuffmanLogBiLinearModel::HuffmanLogBiLinearModel(const ModelData& config, 
+                                                               const Dict& labels, 
+                                                               bool diagonal,
+																															 tree<float>& binaryTree,
+																															 int internalNodeCount) 
+: LogBiLinearModel(config, labels, diagonal), internalNodeCount(internalNodeCount), huffmanTree(binaryTree)  {
+	
+	init(config, m_labels, true);
+	//TODO: update save and load model to include tree
+}
+
+void HuffmanLogBiLinearModel::init(const ModelData& config, const Dict& labels, bool init_weights) {
+  // the prediction vector ranges over classes for a class based LM, or the vocab otherwise
+  int num_output_words = output_types();
+  int num_context_words = context_types();
+  int word_width = config.word_representation_size;
+  int context_width = config.ngram_order-1;
+
+  int R_size = num_output_words * word_width;
+  int Q_size = num_context_words * word_width;
+  int C_size = (m_diagonal ? word_width : word_width*word_width);
+  //int C_size;
+  //if (m_diagonal) C_size = word_width;
+  //else            C_size = word_width*word_width;
+
+  allocate_data(config);
+
+  new (&W) WeightsType(m_data, m_data_size);
+  if (init_weights) {
+    //    W.setRandom() /= 10;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+		//unsigned seed=2;
+    //std::mt19937 gen(seed);
+    std::normal_distribution<Real> gaussian(0,0.1);
+    for (int i=0; i<m_data_size; i++)
+      W(i) = gaussian(gen);
+  }
+  else W.setZero();
+
+  new (&R) WordVectorsType(m_data, num_output_words, word_width);
+  new (&Q) WordVectorsType(m_data+R_size, num_context_words, word_width);
+
+  C.clear();
+  Real* ptr = m_data+R_size+Q_size;
+  for (int i=0; i<context_width; i++) {
+    if (m_diagonal) C.push_back(ContextTransformType(ptr, word_width, 1));
+    else            C.push_back(ContextTransformType(ptr, word_width, word_width));
+    ptr += C_size;
+    //     C.back().setIdentity();
+    //      C.back().setZero();
+  }
+
+  new (&B) WeightsType(ptr, num_output_words);
+  new (&M) WeightsType(ptr+num_output_words, context_width);
+
+  M.setZero();
+
+#pragma omp master
+  if (true) {
+    std::cout << "===============================" << std::endl;
+    std::cout << " Created a HuffmanLogBiLinearModel: "   << std::endl;
+    std::cout << "  Output Vocab size = "          << num_output_words << std::endl;
+    std::cout << "  Context Vocab size = "         << num_context_words << std::endl;
+    std::cout << "  Word Vector size = "           << word_width << std::endl;
+    std::cout << "  Context size = "               << context_width << std::endl;
+    std::cout << "  Diagonal = "                   << m_diagonal << std::endl;
+    std::cout << "  Total parameters = "           << m_data_size << std::endl;
+    std::cout << "===============================" << std::endl;
+  }
+}
+
+void HuffmanLogBiLinearModel::allocate_data(const ModelData& config) {
+  int num_output_words = output_types();
+  int num_context_words = context_types();
+  int word_width = config.word_representation_size;
+  int context_width = config.ngram_order-1;
+
+  int R_size = num_output_words * word_width;
+  int Q_size = num_context_words * word_width;;
+  int C_size = (m_diagonal ? word_width : word_width*word_width);
+  int B_size = num_output_words;
+  int M_size = context_width;
+
+  m_data_size = R_size + Q_size + context_width*C_size + B_size + M_size;
+  m_data = new Real[m_data_size];
 }
 
 

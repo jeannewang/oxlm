@@ -51,8 +51,8 @@ typedef vector<WordId> Sentence;
 typedef vector<WordId> Corpus;
 
 void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict);
-tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram);
-tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram);
+tree<float> createRandomTree(Dict& dict);
+tree<float> createHuffmanTree(VectorReal& unigram, Dict& dict);
 pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree);
 double sigmoid(double x);
 double log_sigmoid(double x);
@@ -63,7 +63,7 @@ double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar);
 MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expected_prediction_vectors,VectorReal& allwords, bool regularize);
 void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_iterator oldNode, VectorReal& allwords,int word_width,MatrixReal& expected_prediction_vectors);
 double getUnigramForNode(HuffmanLogBiLinearModel& model, tree<float>& binaryTree, tree<float>::pre_order_iterator node);
-
+int getInternalNodeCount(tree<float> & binaryTree);
 
 void learn(const variables_map& vm, const ModelData& config);
 
@@ -189,6 +189,17 @@ int main(int argc, char **argv) {
   return 0;
 }
 
+int getInternalNodeCount(tree<float> & binaryTree){
+	int internalCount=0;
+	tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
+	while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
+		if (!binaryTree.isLeaf(it)){
+			internalCount++;
+		}
+		++it;
+	}
+	return internalCount;
+}
 void write_out_tree(HuffmanLogBiLinearModel& model, string filename, int trainingSize){
 	//open file
 	std::ofstream f(filename.c_str());
@@ -230,10 +241,7 @@ void print_tree(const tree<float>& tr, tree<float>::pre_order_iterator it, tree<
 	cerr << "-----" << endl;
 	}
 
-tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram){
-
-	VectorReal unigram = model.unigram;
-	Dict dict = model.label_set();
+tree<float> createHuffmanTree(VectorReal& unigram, Dict& dict){
 
 	multimap<float, tree<float> > priQ;
 	tree<float> huffmanTree;
@@ -265,55 +273,21 @@ tree<float> createHuffmanTree(HuffmanLogBiLinearModel& model, bool updateBWithUn
 	cerr<<"finished priQ"<<endl;
 	//The remaining node is the root node and the tree is complete.
 	huffmanTree=(*priQ.begin()).second;
-
-	//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into R matrix
-	int leafCount=0;
-	{
-		tree<float>::leaf_iterator it=huffmanTree.begin_leaf();
-		while(it!=huffmanTree.end_leaf() && huffmanTree.is_valid(it)) {
-			leafCount++;
-				++it;
-		}
-	}
-
-	cerr<<"size:"<<huffmanTree.size()<<endl;
-	cerr<<"numleaves:"<<leafCount<<" numInternal:"<<huffmanTree.size()-leafCount<<endl;
-
-	int internalCount=0;
-	{
-		tree<float>::breadth_first_queued_iterator it=huffmanTree.begin_breadth_first();
-		while(it!=huffmanTree.end_breadth_first() && huffmanTree.is_valid(it)) {
-			if (!huffmanTree.isLeaf(it)){
-				if(updateBWithUnigram){
-					model.B(internalCount)=(*it); //update with unigram probability
-					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;
-				}
-				it=huffmanTree.replace (it, internalCount);
-				internalCount++;
-			}
-			++it;
-		}
-	}
-	cerr<<"internalNodes:"<<internalCount<<endl;
-
-	print_tree(huffmanTree,huffmanTree.begin(),huffmanTree.end(),dict);
 	return huffmanTree;
 }
 	
-tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUnigram){
-	
-	VectorReal unigram = model.unigram;
-	Dict dict = model.label_set();
+tree<float> createRandomTree(Dict& dict){
+
 	boost::mt19937 gen;
 	
 	multimap<float, tree<float> > priQ;
 	tree<float> binaryTree;
-	//create huffman tree using unigram freq
-   for (size_t i=0; i<dict.size(); i++) {
+	//create random tree
+  for (size_t i=0; i<dict.size(); i++) {
 		//make new tree node
 		tree<float> node;
 		node.set_head(i); // key is index into vocabulary 
-		priQ.insert( pair<float,tree<float> >( unigram(i), node )); //lowest probability in front
+		priQ.insert( pair<float,tree<float> >( 0, node ));
    }
 	while(priQ.size() >1){
 		//Get two random nodes from the queue
@@ -350,42 +324,88 @@ tree<float> createRandomTree(HuffmanLogBiLinearModel& model, bool updateBWithUni
 	//The remaining node is the root node and the tree is complete.
 	binaryTree=(*priQ.begin()).second;
 	
-	//update the tree so that leaf nodes are indices into word matrix and inner nodes are indices into R matrix
-	int leafCount=0;
-	{
-		tree<float>::leaf_iterator it=binaryTree.begin_leaf();
-		while(it!=binaryTree.end_leaf() && binaryTree.is_valid(it)) {
-			leafCount++;
-				++it;
-		}
-	}
-
-	cerr<<"size:"<<binaryTree.size()<<endl;
-	cerr<<"numleaves:"<<leafCount<<" numInternal:"<<binaryTree.size()-leafCount<<endl;
-
-	int internalCount=0;
-	{
-		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
-		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
-			if (!binaryTree.isLeaf(it)){
-				if(updateBWithUnigram){
-					model.B(internalCount)=(*it); //update with unigram probability
-					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
-				}
-				it=binaryTree.replace (it, internalCount);
-				internalCount++;
-			}
-			++it;
-		}
-	}
-	cerr<<"internalNodes:"<<internalCount<<endl;
-	
-	print_tree(binaryTree,binaryTree.begin(),binaryTree.end(),dict);
 	return binaryTree;
 }
 
-tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinearModel& randModel,Corpus& test_corpus, bool updateBWithUnigram){
-	VectorReal unigram = model.unigram;
+tree<float> createReadInTree(Dict& dict, string filename, bool addInStartEnd=true){
+	
+	tree<float> binaryTree;
+	binaryTree.set_head(0);
+	
+	int tokenCount=0;
+	cerr<<"filename:"<<filename<<endl;
+	std::ifstream in(filename.c_str());
+	string line, token;
+	while (getline(in, line)) {
+		stringstream line_stream(line);
+		line_stream >> token;
+		string code = token;
+		line_stream >> token;
+		string word = token;
+		line_stream >> token;
+		string freqstr = token;
+		int freq=atoi(freqstr.c_str());
+		tokenCount+=freq;
+		cerr<<"code:"<<code<<" word:"<<word<<" freq:"<<freq<<endl;
+		
+		tree<float>::pre_order_iterator currentNode=binaryTree.begin();
+		currentNode=binaryTree.replace (currentNode, (*currentNode)+freq);
+		for (int i=0;i<code.length();i++){
+			int y=(code[i]=='0' ? 0 : 1);
+			int numChildren=binaryTree.number_of_children(currentNode);
+			if (numChildren==0){
+				if (y==0){
+					binaryTree.append_child(currentNode,freq);
+				}
+				if (y==1){
+					binaryTree.append_child(currentNode,0);
+					binaryTree.append_child(currentNode,0);
+				}
+			}
+			else if (numChildren==1){
+				if (y==1){
+					binaryTree.append_child(currentNode,0);
+				}
+			}
+			currentNode=binaryTree.child(currentNode, y);
+			currentNode=binaryTree.replace (currentNode, (*currentNode)+freq);
+			
+			//at end of path, add node
+			if (i==(code.length()-1)){ 
+				currentNode=binaryTree.replace (currentNode, dict.Lookup(word));
+			}	
+		}
+	}
+	in.close();
+	
+	int internalCount = getInternalNodeCount(binaryTree);
+	
+	if(addInStartEnd){
+			bool noStartEnd=true;
+			tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
+			int treeDepth=binaryTree.depth(it);
+			while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
+
+				if (binaryTree.isLeaf(it)){
+					//add in start and end symbol after a random word about 10% down
+					if ( noStartEnd && ((float)binaryTree.depth(it)/treeDepth) >= .1 ){
+						int word=(*it);
+						tree<float>::breadth_first_queued_iterator it1=binaryTree.append_child(it,word);
+						tree<float>::breadth_first_queued_iterator it2=binaryTree.append_child(it,internalCount+1);
+						it1=binaryTree.replace (it, internalCount);
+						binaryTree.append_child(it2,dict.Lookup("<s>"));
+						binaryTree.append_child(it2,dict.Lookup("</s>"));
+						noStartEnd=false;
+					}
+				}
+				++it;
+			}
+		}
+
+	return binaryTree;
+}
+
+tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& randModel,Corpus& test_corpus){
 	Dict dict = randModel.label_set();
 	int numWords =dict.size();
 //	assert(dict == model.label_set()); //random model must be of the same dataset
@@ -470,35 +490,13 @@ tree<float> createAdaptiveTree(HuffmanLogBiLinearModel& model, HuffmanLogBiLinea
 		}
 	}
 	
-	int internalCount=0;
-	{
-		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
-		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
-			
-			if (!binaryTree.isLeaf(it)){
-				
-				if(updateBWithUnigram){
-					model.B(internalCount)=getUnigramForNode(model,binaryTree,it); //update with unigram probability
-					//cout<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
-				}
-				
-				it=binaryTree.replace (it, internalCount);
-				internalCount++;
-			}
-		++it;
-		}
-	}
-	
-	cerr<<"numleaves:"<<binaryTree.size()-internalCount<<"internalNodes:"<<internalCount<<endl;
-	
-	print_tree(binaryTree,binaryTree.begin(),binaryTree.end(),dict);
-	
 	return binaryTree;
 }
 
 double getUnigramForNode(HuffmanLogBiLinearModel& model,tree<float>& binaryTree, tree<float>::pre_order_iterator node){
 	if (binaryTree.isLeaf(node)){
-		return model.unigram((*node));
+		int wordInstances=model.ys[(*node)].size();
+		return model.unigram((*node))/wordInstances;
 	}
 	else{
 		double result=0;
@@ -777,40 +775,6 @@ MatrixReal gaussianMixtureModel(int word_width,int numWords, MatrixReal& expecte
 	return respons;
 }
 
-MatrixReal pinv(MatrixReal &a)
-{
-    // see : http://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#The_general_case_and_the_SVD_method
-
-    // SVD
-    Eigen::JacobiSVD<MatrixReal> svdA(a, ComputeThinU | ComputeThinV);
-
-    MatrixReal vSingular = svdA.singularValues();
-
-    // Build a diagonal matrix with the Inverted Singular values
-    // The pseudo inverted singular matrix is easy to compute :
-    // is formed by replacing every nonzero entry by its reciprocal (inversing).
-    MatrixReal vPseudoInvertedSingular(svdA.matrixV().cols(),1);
-
-    for (int iRow =0; iRow<vSingular.rows(); iRow++)
-    {
-        if ( fabs(vSingular(iRow))<=1e-10 ) // Todo : Put epsilon in parameter
-        {
-            vPseudoInvertedSingular(iRow,0)=0.;
-        }
-        else
-        {
-            vPseudoInvertedSingular(iRow,0)=1./vSingular(iRow);
-        }
-    }
-
-    // A little optimization here 
-    MatrixReal mAdjointU = svdA.matrixU().adjoint().block(0,0,vSingular.rows(),svdA.matrixU().adjoint().cols());
-
-    // Pseudo-Inversion : V * S * U'
-    MatrixReal a_pinv = (svdA.matrixV() *  vPseudoInvertedSingular.asDiagonal()) * mAdjointU  ;
-		return a_pinv;
-}
-
 double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
 
 	MatrixReal covarDiag=covar.diagonal().asDiagonal();
@@ -824,105 +788,6 @@ double gaussianCalc(VectorReal& x, VectorReal& mean, MatrixReal& covar){
 	double normalizer = pow(2*pi,x.size()*.5)*pow(determinant,.5);
 	double result= (1.0/normalizer)*exp(-.5*innerProd);
 	return result;
-}
-
-tree<float> createReadInTree(HuffmanLogBiLinearModel& model, string filename, bool updateBWithUnigram, bool addInStartEnd=true){
-	VectorReal unigram = model.unigram;
-	Dict dict = model.label_set();
-	
-	tree<float> binaryTree;
-	binaryTree.set_head(0);
-	
-	int tokenCount=0;
-	cerr<<"filename:"<<filename<<endl;
-	std::ifstream in(filename.c_str());
-	string line, token;
-	while (getline(in, line)) {
-		stringstream line_stream(line);
-		line_stream >> token;
-		string code = token;
-		line_stream >> token;
-		string word = token;
-		line_stream >> token;
-		string freqstr = token;
-		int freq=atoi(freqstr.c_str());
-		tokenCount+=freq;
-		cerr<<"code:"<<code<<" word:"<<word<<" freq:"<<freq<<endl;
-		
-		tree<float>::pre_order_iterator currentNode=binaryTree.begin();
-		currentNode=binaryTree.replace (currentNode, (*currentNode)+freq);
-		for (int i=0;i<code.length();i++){
-			int y=(code[i]=='0' ? 0 : 1);
-			int numChildren=binaryTree.number_of_children(currentNode);
-			if (numChildren==0){
-				if (y==0){
-					binaryTree.append_child(currentNode,freq);
-				}
-				if (y==1){
-					binaryTree.append_child(currentNode,0);
-					binaryTree.append_child(currentNode,0);
-				}
-			}
-			else if (numChildren==1){
-				if (y==1){
-					binaryTree.append_child(currentNode,0);
-				}
-			}
-			currentNode=binaryTree.child(currentNode, y);
-			currentNode=binaryTree.replace (currentNode, (*currentNode)+freq);
-			
-			//at end of path, add node
-			if (i==(code.length()-1)){ 
-				currentNode=binaryTree.replace (currentNode, model.label_id(word));
-			}	
-		}
-	}
-	in.close();
-
-	int internalCount=0;
-	{
-		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
-		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
-			
-			if (!binaryTree.isLeaf(it)){
-				
-				if(updateBWithUnigram){
-					model.B(internalCount)=((float)(*it)/tokenCount); //update with unigram probability
-					//cerr<<"node:"<<internalCount<<" prob:"<<(*it)<<endl;binaryTree
-				}
-				
-				it=binaryTree.replace (it, internalCount);
-				internalCount++;
-			}
-		++it;
-		}
-	}
-	cerr<<"internalNodes:"<<internalCount<<endl;
-	
-	if(addInStartEnd){
-		bool noStartEnd=true;
-		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
-		int treeDepth=binaryTree.depth(it);
-		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
-			
-			if (binaryTree.isLeaf(it)){
-				//add in start and end symbol after a random word about 10% down
-				if ( noStartEnd && ((float)binaryTree.depth(it)/treeDepth) >= .1 ){
-					int word=(*it);
-					tree<float>::breadth_first_queued_iterator it1=binaryTree.append_child(it,word);
-					tree<float>::breadth_first_queued_iterator it2=binaryTree.append_child(it,internalCount+1);
-					it1=binaryTree.replace (it, internalCount);
-					binaryTree.append_child(it2,model.label_id("<s>"));
-					binaryTree.append_child(it2,model.label_id("</s>"));
-					noStartEnd=false;
-				}
-			}
-			++it;
-		}
-	}
-
-	print_tree(binaryTree,binaryTree.begin(),binaryTree.end(),dict);
-	return binaryTree;
 }
 
 pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree){
@@ -1011,30 +876,24 @@ void learn(const variables_map& vm, const ModelData& config) {
 	cerr<<"TEST-SET SIZE:"<<test_corpus.size()<<endl;
   //////////////////////////////////////////////
 
-  //LogBiLinearModel model(config, dict, vm.count("diagonal-contexts"));
-  HuffmanLogBiLinearModel model(config, dict, vm.count("diagonal-contexts"));
-
-  if (vm.count("model-in")) {
-    std::ifstream f(vm["model-in"].as<string>().c_str());
-    boost::archive::text_iarchive ar(f);
-    ar >> model;
-  }
-
+	//get unigram distribution
   vector<size_t> training_indices(training_corpus.size());
-  model.unigram = VectorReal::Zero(model.labels());
+  VectorReal unigram = VectorReal::Zero(dict.size());
   for (size_t i=0; i<training_indices.size(); i++) {
-    model.unigram(training_corpus[i]) += 1;
+    unigram(training_corpus[i]) += 1;
     training_indices[i] = i;
   }
-  model.unigram /= model.unigram.sum();
-
-	//create binarytree from vocabulary and set B to unigram distribution
+  unigram /= unigram.sum();
+	//////////////////////////////////////////////
+	
+	//create binarytree from vocabulary
 	clock_t tree_start=clock();
 	
+	tree<float> binaryTree;
 	string treeType=vm["tree-type"].as<string>();
 	if (treeType == "random") {
 		cout <<"Creating Random Tree"<<endl;
-		model.huffmanTree = createRandomTree(model, true);
+		binaryTree = createRandomTree(dict);
 		
 	}
 	else if (treeType == "browncluster") {
@@ -1044,7 +903,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 			return;
 		}
 		cout <<"Creating Brown Cluster Tree with paths from file:"<<vm["tree-in"].as<string>()<<endl;
-		model.huffmanTree = createReadInTree(model, vm["tree-in"].as<string>(), true,true);
+		binaryTree = createReadInTree(dict, vm["tree-in"].as<string>(),true);
 		
 	}
 	else if (treeType == "adaptive") {
@@ -1060,35 +919,88 @@ void learn(const variables_map& vm, const ModelData& config) {
 	    ar >> randModel;
 	  }
 		cout<<"Creating Adaptive Tree with random tree from archive file:"<<vm["random-model-in"].as<string>()<<endl;
-		model.huffmanTree = createAdaptiveTree(model, randModel, training_corpus, true);
+		binaryTree = createAdaptiveTree(randModel, training_corpus);
 	}
 	else if (treeType == "huffman"){
 		cout<<"Creating Huffman Tree"<<endl;
-		model.huffmanTree=createHuffmanTree(model, true);
+		binaryTree=createHuffmanTree(unigram, dict);
 	}
 	else if (treeType == "huffmanOvercomplete"){
 		cout<<"Creating Huffman Tree Overcomplete"<<endl;
-		tree<float> huffTree=createHuffmanTree(model, true);
+		tree<float> huffTree=createHuffmanTree(unigram, dict);
 		tree<float> huffTree2=huffTree.subtree (huffTree.begin(), huffTree.end());
-		model.huffmanTree=huffTree;
+		binaryTree=huffTree;
 	}
 	else if (treeType != "browncluster" && vm.count("tree-in")){
-		model.huffmanTree = createReadInTree(model, vm["tree-in"].as<string>(), true,false);	
+		binaryTree = createReadInTree(dict, vm["tree-in"].as<string>(),false);	
 	}
 	
 	Real tree_time = (clock()-tree_start) / (Real)CLOCKS_PER_SEC;
 	cout<<"Time to create tree:"<<tree_time<<" seconds"<<endl;
 	
+	////////////////////////////////////////////////////////////////
+	
+	int internalNodeCount = getInternalNodeCount(binaryTree);
+  HuffmanLogBiLinearModel model(config, dict, vm.count("diagonal-contexts"),binaryTree,internalNodeCount);
 
+  if (vm.count("model-in")) {
+    std::ifstream f(vm["model-in"].as<string>().c_str());
+    boost::archive::text_iarchive ar(f);
+    ar >> model;
+  }
+
+	model.unigram=unigram;
+	
+	/////////////////////////////////////////////////////////////////
+	
+	//set node value to index into R
+	int internalCount=0;
+	tree<float>::breadth_first_queued_iterator it=model.huffmanTree.begin_breadth_first();
+	while(it!=model.huffmanTree.end_breadth_first() && model.huffmanTree.is_valid(it)) {
+		if (!model.huffmanTree.isLeaf(it)){
+			it=model.huffmanTree.replace (it, internalCount);
+			internalCount++;
+		}
+		++it;
+	}
+	
 	//get binary decisions per word in huffmantree
 	pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > pairYs = getYs(model.huffmanTree);
 	model.ys = pairYs.first;
 	model.ysInternalIndex = pairYs.second;
-
+	
+	//update bias B terms with unigram distribution
+	bool updateBWithUnigram=true;
+	internalCount=0;
+	it=model.huffmanTree.begin_breadth_first();
+	while(it!=model.huffmanTree.end_breadth_first() && model.huffmanTree.is_valid(it)) {
+		if (!model.huffmanTree.isLeaf(it)){
+			 if(updateBWithUnigram){
+			 		model.B(internalCount)=getUnigramForNode(model, model.huffmanTree, it); //update with unigram probability
+			 	}
+			internalCount++;
+		}
+		++it;
+	}
+	
+	// for(int w=0;w<model.labels();w++){
+	// 	cout<<"ysInternalIndex for "<< model.label_str(w) <<endl;
+	// 	for (int i=model.ys[w][0].size()-2; i>=0;i--)
+	// 		cout<< model.ysInternalIndex[w][0][i+1] <<",";
+	// 	cout<<endl;
+	// 	for (int i=model.ys[w][0].size()-2; i>=0;i--)
+	// 		cout<< model.ys[w][0][i] <<",";
+	// 	cout<<endl;
+	// }
+	
+	print_tree(model.huffmanTree, model.huffmanTree.begin(), model.huffmanTree.end(),dict);
+	
 	if (vm.count("tree-out")) {
 		cout<<"Writing tree to "<<vm["tree-out"].as<string>()<<endl;
 		write_out_tree(model, vm["tree-out"].as<string>(), training_corpus.size());
   }
+
+	///////////////////////////////////////////////////////////////////////////////
 
   VectorReal adaGrad = VectorReal::Zero(model.num_weights());
   VectorReal global_gradient(model.num_weights());
@@ -1099,7 +1011,7 @@ void learn(const variables_map& vm, const ModelData& config) {
   {
     //////////////////////////////////////////////
     // setup the gradient matrices
- 		int num_nodes = model.labels(); //TODO change size of R
+		int num_nodes = model.internalNodeCount;
     int num_words = model.labels();
     int word_width = model.config.word_representation_size;
     int context_width = model.config.ngram_order-1;
@@ -1107,15 +1019,15 @@ void learn(const variables_map& vm, const ModelData& config) {
     int R_size = num_nodes*word_width;
     int Q_size = num_words*word_width;
     int C_size = (vm.count("diagonal-contexts") ? word_width : word_width*word_width);
-    int B_size = num_words;
+    int B_size = num_nodes;
     int M_size = context_width;
-
+		
     assert((R_size+Q_size+context_width*C_size+B_size+M_size) == model.num_weights());
 
     Real* gradient_data = new Real[model.num_weights()];
     LogBiLinearModel::WeightsType gradient(gradient_data, model.num_weights());
 
-    LogBiLinearModel::WordVectorsType g_R(gradient_data, num_words, word_width);
+    LogBiLinearModel::WordVectorsType g_R(gradient_data, num_nodes, word_width);
     LogBiLinearModel::WordVectorsType g_Q(gradient_data+R_size, num_words, word_width);
 
     LogBiLinearModel::ContextTransformsType g_C;
