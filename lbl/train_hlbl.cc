@@ -527,6 +527,9 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 			binaryTree.append_child(cNew,allwords(0));
 			binaryTree.erase_children(c1);
 			binaryTree.erase(c1);
+			if (binaryTree.number_of_children(cNew)>2){
+				cerr<<"too many children line:"<<__LINE__<<endl;
+			}
 			cerr<<__LINE__<<":"<<allwords(0)<<endl;
 		}
 		return;
@@ -537,10 +540,19 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 				tree<float>::breadth_first_queued_iterator c1=binaryTree.append_child(oldNode,-1);
 				binaryTree.append_child(c1,allwords(0)); 
 				binaryTree.append_child(c1,allwords(1));
+				if (binaryTree.number_of_children(oldNode)>2){
+					cerr<<"too many children line:"<<__LINE__<<endl;
+				}
+				if (binaryTree.number_of_children(c1)>2){
+					cerr<<"too many children line:"<<__LINE__<<endl;
+				}
 			}
 			else{
 				binaryTree.append_child(oldNode,allwords(0)); 
 				binaryTree.append_child(oldNode,allwords(1));
+				if (binaryTree.number_of_children(oldNode)>2){
+					cerr<<"too many children line:"<<__LINE__<<endl;
+				}
 			}
 			cerr<<__LINE__<<":"<<allwords(0)<<endl;
 			cerr<<__LINE__<<":"<<allwords(1)<<endl;
@@ -551,6 +563,9 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 			binaryTree.append_child(c2,allwords(1));
 			cerr<<__LINE__<<":"<<allwords(0)<<endl;
 			cerr<<__LINE__<<":"<<allwords(1)<<endl;
+			if (binaryTree.number_of_children(c2)>2){
+				cerr<<"too many children line:"<<__LINE__<<endl;
+			}
 		}
 		else{
 			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
@@ -563,12 +578,18 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 			binaryTree.append_child(cNew1,allwords(0));
 			binaryTree.erase_children(c1);
 			binaryTree.erase(c1);
+			if (binaryTree.number_of_children(cNew1)>2){
+				cerr<<"too many children line:"<<__LINE__<<endl;
+			}
 
 			tree<float>::breadth_first_queued_iterator subtree2=binaryTree.append_child(cNew2,-1);
 			binaryTree.replace(subtree2,c2);
 			binaryTree.append_child(cNew2,allwords(1));
 			binaryTree.erase_children(c2);
 			binaryTree.erase(c2);
+			if (binaryTree.number_of_children(cNew2)>2){
+				cerr<<"too many children line:"<<__LINE__<<endl;
+			}
 			
 			cerr<<__LINE__<<":"<<allwords(0)<<endl;
 			cerr<<__LINE__<<":"<<allwords(1)<<endl;
@@ -577,7 +598,19 @@ void recursiveAdaptiveHelper(tree<float>& binaryTree, tree<float>::pre_order_ite
 	}
 	else{
 		//create new node and attach this to the tree as a child of last node
-		tree<float>::pre_order_iterator newNode=binaryTree.append_child(oldNode,-1); 
+		tree<float>::pre_order_iterator newNode;
+		if (binaryTree.number_of_children(oldNode)>=2){
+			tree<float>::breadth_first_queued_iterator c1=binaryTree.child(oldNode,0);
+			tree<float>::breadth_first_queued_iterator cNew1=binaryTree.append_child(oldNode,-1);
+			tree<float>::breadth_first_queued_iterator subtree1=binaryTree.append_child(cNew1,-1);
+			binaryTree.replace(subtree1,c1);
+			binaryTree.erase_children(c1);
+			binaryTree.erase(c1);
+			newNode=cNew1;
+		}
+		else{
+			newNode=binaryTree.append_child(oldNode,-1); 
+		}
 		MatrixReal respons=gaussianMixtureModel(word_width,numWords,expected_prediction_vectors,allwords,true);
 		
 		vector<int> group1;
