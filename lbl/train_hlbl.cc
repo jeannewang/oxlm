@@ -170,8 +170,9 @@ int main(int argc, char **argv) {
   cout << "# Config Summary" << endl;
   cout << "# order = " << vm["order"].as<int>() << endl;
   if (vm.count("model-in"))
-   cout << "# model-in = " << vm["model-in"].as<string>() << endl;
+  cout << "# model-in = " << vm["model-in"].as<string>() << endl;
   cout << "# model-out = " << vm["model-out"].as<string>() << endl;
+	cout << "# tree-out = " << vm["tree-out"].as<string>() << endl;
   cout << "# input = " << vm["input"].as<string>() << endl;
 	cout << "# tree-in = " << vm["tree-in"].as<string>() << endl;
   cout << "# minibatch-size = " << vm["minibatch-size"].as<int>() << endl;
@@ -1045,20 +1046,22 @@ void learn(const variables_map& vm, const ModelData& config) {
 			 if(updateBWithUnigram){
 			 		model.B(internalCount)=getUnigramForNode(model, model.huffmanTree, it); //update with unigram probability
 			 	}
-			it=model.huffmanTree.replace (it, model.B(internalCount));
+			//it=model.huffmanTree.replace (it, model.B(internalCount));
 			internalCount++;
 		}
 		++it;
 	}
 	
 	// for(int w=0;w<model.labels();w++){
-	// 	cout<<"ysInternalIndex for "<< model.label_str(w) <<endl;
-	// 	for (int i=model.ys[w][0].size()-2; i>=0;i--)
-	// 		cout<< model.ysInternalIndex[w][0][i+1] <<",";
-	// 	cout<<endl;
-	// 	for (int i=model.ys[w][0].size()-2; i>=0;i--)
-	// 		cout<< model.ys[w][0][i] <<",";
-	// 	cout<<endl;
+	// 	for (int winstances=0;winstances<model.ys[w].size();winstances++){
+	// 	cout<<"ysInternalIndex for "<< model.label_str(w) <<" instance "<<winstances<<endl;
+	// 		for (int i=model.ys[w][winstances].size()-2; i>=0;i--)
+	// 			cout<< model.ysInternalIndex[w][winstances][i+1] <<",";
+	// 		cout<<endl;
+	// 		for (int i=model.ys[w][winstances].size()-2; i>=0;i--)
+	// 			cout<< model.ys[w][winstances][i] <<",";
+	// 		cout<<endl;
+	// 	}
 	// }
 	
 	print_tree(model.huffmanTree, model.huffmanTree.begin(), model.huffmanTree.end(),dict);
@@ -1099,7 +1102,7 @@ void learn(const variables_map& vm, const ModelData& config) {
     LogBiLinearModel::WordVectorsType g_Q(gradient_data+R_size, num_words, word_width);
 
     LogBiLinearModel::ContextTransformsType g_C;
-    Real* ptr = gradient_data+2*R_size;
+    Real* ptr = gradient_data+R_size+Q_size;
     for (int i=0; i<context_width; i++) {
       if (vm.count("diagonal-contexts"))
           g_C.push_back(LogBiLinearModel::ContextTransformType(ptr, word_width, 1));
@@ -1299,6 +1302,8 @@ Real sgd_gradient(HuffmanLogBiLinearModel& model,
 						 
 				log_word_prob += binary_conditional_prob; //multiplying in log space
 				g_R.row(yIndex) += R_gradient_contribution;
+				//cout<<"g_B size:"<<g_B.size()<<" yindex:"<<yIndex<<endl;
+				//cout<<"g_B(yIndex):"<<g_B(1)<<endl;
 				g_B(yIndex) += B_gradient_contribution;
 			}
 		}
