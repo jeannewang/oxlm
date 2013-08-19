@@ -140,6 +140,7 @@ int main(int argc, char **argv) {
 		("random-model-in", value<string>()->default_value("model"), "Archive of random-tree hlbl model")
 		("tree-out", value<string>()->default_value("tree"), "Write tree to file")
 		("epsilon", value<double>()->default_value(0), "Epsilon for adaptive epsilon tree")
+		("R-in", value<string>(), "filename for file containing R matrix")
     ;
   options_description config_options, cmdline_options;
   config_options.add(generic);
@@ -885,6 +886,66 @@ pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(t
 		return returnValue;
 }
 
+tree<float> createAdaptiveTreeFromR(string filename, Dict& dict, int word_width, Corpus& test_corpus,double epsilon=0){
+	int numWords =dict.size();
+	
+	MatrixReal R = MatrixReal::Zero(numWords, word_width);
+	
+	ifstream in(filename.c_str());
+  string line, token;
+
+	getline(in, line); //get rid of first line
+  while (getline(in, line)) {
+    stringstream line_stream(line);
+		
+		line_stream >> token;
+		string wordStr = token;
+		int i=0;
+    while (line_stream >> token){ 
+			R(dict.Lookup(wordStr),i) = atof(token.c_str());
+			i++;
+		}
+  }
+  in.close();
+	
+	tree<float> binaryTree;
+	binaryTree.set_head(-1);
+
+	
+	//recursively apply mixture of gaussian clustering into 2 clusters.
+	VectorReal allwords = VectorReal::Zero(numWords);
+	for (int i=0;i<numWords;i++){
+		allwords(i)=i;
+	}
+	recursiveAdaptiveHelper(binaryTree, binaryTree.begin(), allwords,word_width,R,epsilon);
+	
+	binaryTree=binaryTree.child(binaryTree.begin(), 0); //because there is one extra node
+	
+	{
+		//getting rid of superfluous nodes
+		tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
+		while(it!=binaryTree.end_breadth_first() && binaryTree.is_valid(it)) {
+			
+			if (!binaryTree.isLeaf(it)){
+				if (binaryTree.number_of_children(it)==1 && !binaryTree.isLeaf(binaryTree.child(it,0)) ){
+				//can delete
+					cerr<<"deleting"<<endl;
+					tree<float>::breadth_first_queued_iterator c1=binaryTree.child(it,0);
+					
+					c1=binaryTree.insert_subtree_after(it, c1);
+					binaryTree.erase_children(it);
+					binaryTree.erase(it);
+					it=c1;
+				}
+			}				
+			++it;
+		}
+	}
+	
+	return binaryTree;
+}
+
+
 void learn(const variables_map& vm, const ModelData& config) {
   Corpus training_corpus, test_corpus;
   Dict dict;
@@ -982,6 +1043,14 @@ void learn(const variables_map& vm, const ModelData& config) {
 		else{
 			binaryTree = createAdaptiveTree(randModel, training_corpus);
 		}
+	}
+	else if (treeType == "adaptiveFromR"){
+		if (!vm.count("R-in")) {
+			cout<<"Must include option --R-in"<<endl;
+			return;
+		}
+		
+		binaryTree = createAdaptiveTreeFromR(vm["R-in"].as<string>(), dict, config.word_representation_size, training_corpus);
 	}
 	else if (treeType == "huffman"){
 		cout<<"Creating Huffman Tree"<<endl;
