@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
         "corpus of test sentences to be evaluated at each iteration")
 		("file-out", value<string>()->default_value("fileout.txt"), "file out")
 		("tree-in", value<string>()->default_value("../browncluster/output.txt"), "Use tree from this file")
-		("variable", value<string>()->default_value("Q"), "variable types are: Q,R,perplexity")
+		("variable", value<string>()->default_value("Q"), "variable types are: Q,R,perplexity,tree")
 		("model-in,m", value<string>()->default_value("model"),"initial model")
     ("model-out,o", value<string>()->default_value("model"), 
         "base filename of model output files")
@@ -239,7 +239,8 @@ void learn(const variables_map& vm, const ModelData& config) {
 	model.ys = pairYs.first;
 	model.ysInternalIndex = pairYs.second;
 /////////////////////////////////////////////
-
+	cout<<"Printing out "<<vm["variable"].as<string>()<<endl;
+	
 	ofstream myfile;
 	myfile.open (vm["file-out"].as<string>().c_str());
 	
@@ -305,6 +306,11 @@ void learn(const variables_map& vm, const ModelData& config) {
 	}
 	else if (vm["variable"].as<string>() == "tree"){
 		print_tree(myfile, binaryTree, binaryTree.begin(), binaryTree.end(),dict);
+	}
+	else if (vm["variable"].as<string>() == "C"){
+		for(int i=0;i<config.ngram_order-1;i++){
+			myfile<<model.C.at(i)<<endl<<endl<<endl;
+		}
 	}
 	
 	myfile.close();
