@@ -69,9 +69,10 @@ double getLogWordProb(const HuffmanLogBiLinearModel& model, VectorReal& predicti
 tree<float> createReadInTree(Dict& dict, string filename, bool addInStartEnd=true);
 set< tree<float>::breadth_first_queued_iterator, ltnode> getRNodesAboveChildren(const tree<float>& binaryTree);
 int getInternalNodeCount(tree<float> & binaryTree);
-VectorReal perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride);
+VectorReal perplexityPerWord(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride);
 pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree);
 void print_tree(ofstream& file, const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict);
+Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride);
 
 int main(int argc, char **argv) {
   cout << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
@@ -96,7 +97,7 @@ int main(int argc, char **argv) {
         "corpus of test sentences to be evaluated at each iteration")
 		("file-out", value<string>()->default_value("fileout.txt"), "file out")
 		("tree-in", value<string>()->default_value("../browncluster/output.txt"), "Use tree from this file")
-		("variable", value<string>()->default_value("Q"), "variable types are: Q,R,perplexity,tree")
+		("variable", value<string>()->default_value("Q"), "variable types are: Q,R,C,perplexity,perplexityPerWord,tree,perplexityWithGaussianQ")
 		("model-in,m", value<string>()->default_value("model"),"initial model")
     ("model-out,o", value<string>()->default_value("model"), 
         "base filename of model output files")
@@ -234,10 +235,11 @@ void learn(const variables_map& vm, const ModelData& config) {
     ar >> model;
 		cerr<<"done loading in model"<<endl;
   }
-
-	pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > pairYs = getYs(model.huffmanTree);
-	model.ys = pairYs.first;
-	model.ysInternalIndex = pairYs.second;
+	if (vm.count("tree-in")){
+		pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > pairYs = getYs(model.huffmanTree);
+		model.ys = pairYs.first;
+		model.ysInternalIndex = pairYs.second;
+	}
 /////////////////////////////////////////////
 	cout<<"Printing out "<<vm["variable"].as<string>()<<endl;
 	
@@ -287,8 +289,8 @@ void learn(const variables_map& vm, const ModelData& config) {
 			myfile<<endl;	
 		}	
 	}
-	else if (vm["variable"].as<string>() == "perplexity"){
-		VectorReal perplex_vector = perplexity(model, test_corpus, 1);
+	else if (vm["variable"].as<string>() == "perplexityPerWord"){
+		VectorReal perplex_vector = perplexityPerWord(model, test_corpus, 1);
 		int wordDepth=0;
 		for(int i=0;i<model.labels();i++){
 			//get wordDepth
@@ -311,6 +313,26 @@ void learn(const variables_map& vm, const ModelData& config) {
 		for(int i=0;i<config.ngram_order-1;i++){
 			myfile<<model.C.at(i)<<endl<<endl<<endl;
 		}
+	}
+	else if (vm["variable"].as<string>() == "perplexity"){
+		Real pp=perplexity(model, test_corpus, 1);
+		pp = exp(-pp/test_corpus.size());
+		myfile << "Test Perplexity = " << pp<< endl;
+		
+	}
+	else if (vm["variable"].as<string>() == "perplexityWithGaussianQ"){
+		std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<Real> gaussian(0,0.1);
+    for (int i=0; i<model.Q.rows(); i++) {
+      for (int j=0; j<model.Q.cols(); j++)
+        model.Q(i,j) = gaussian(gen);
+    }
+
+		Real pp=perplexity(model, test_corpus, 1);
+		pp = exp(-pp/test_corpus.size());
+		myfile << "Test Perplexity = " << pp<< endl;
+		
 	}
 	
 	myfile.close();
@@ -450,7 +472,7 @@ set< tree<float>::breadth_first_queued_iterator, ltnode> getRNodesAboveChildren(
 	return RNodes;
 }
 
-VectorReal perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride) {
+VectorReal perplexityPerWord(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride) {
 
   int word_width = model.config.word_representation_size;
   int context_width = model.config.ngram_order-1;
@@ -571,6 +593,71 @@ pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(t
 		returnValue.first=ys;
 		returnValue.second=internalIndex;
 		return returnValue;
+}
+
+Real perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride) {
+  Real p=0.0;
+
+  int word_width = model.config.word_representation_size;
+  int context_width = model.config.ngram_order-1;
+
+  int tokens=0;
+  WordId start_id = model.label_set().Lookup("<s>");
+  WordId end_id = model.label_set().Lookup("</s>");
+
+	//fill context vectors
+  vector<MatrixReal> context_vectors(context_width, MatrixReal::Zero(test_corpus.size(), word_width)); 
+  for (int instance=0; instance < test_corpus.size(); ++instance) {
+    const int& t = instance;
+    int context_start = t - context_width;
+    bool sentence_start = (t==0);
+    for (int i=context_width-1; i>=0; --i) {
+      int j=context_start+i;
+      sentence_start = (sentence_start || j<0 || test_corpus.at(j) == end_id);
+      int v_i = (sentence_start ? start_id : test_corpus.at(j));
+      context_vectors.at(i).row(instance) = model.Q.row(v_i);
+    }
+  }
+
+	//create prediction vectors
+  MatrixReal prediction_vectors = MatrixReal::Zero(test_corpus.size(), word_width);
+  for (int i=0; i<context_width; ++i)
+    prediction_vectors += model.context_product(i, context_vectors.at(i));
+	
+  {
+    #pragma omp master
+    cout << "Calculating perplexity for " << test_corpus.size()/stride << " tokens"<<endl;
+
+		// ofstream myfile;
+		// 	  myfile.open ("distribution.txt");
+		// myfile <<"[";
+	
+    size_t thread_num = omp_get_thread_num();
+    size_t num_threads = omp_get_num_threads();
+		VectorReal prediction_vector;
+    for (size_t s = (thread_num*stride); s < test_corpus.size(); s += (num_threads*stride)) {
+      WordId w = test_corpus.at(s);
+			
+			//get log of word probability
+			prediction_vector = prediction_vectors.row(s);
+			double log_word_prob = getLogWordProb(model,prediction_vector,w);
+			//cerr<<"word prob "<<model.label_str(test_corpus.at(s))<<": "<<exp(log_word_prob)<<endl;
+			
+ 			p += log_word_prob; //multiplying in log space
+		  // myfile << model.unigram(w)<<","<<endl;
+  		
+      #pragma omp master
+      if (tokens % 1000 == 0) { cout << "."; cout.flush(); }
+  
+      tokens++;
+    }
+    #pragma omp master
+		// myfile<<"]";
+		// myfile.close();
+    cout << endl;
+  }
+
+  return p; 
 }
 
 double sigmoid(double x){
