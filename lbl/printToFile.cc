@@ -71,6 +71,7 @@ set< tree<float>::breadth_first_queued_iterator, ltnode> getRNodesAboveChildren(
 int getInternalNodeCount(tree<float> & binaryTree);
 VectorReal perplexity(const HuffmanLogBiLinearModel& model, const Corpus& test_corpus, int stride);
 pair< vector< vector< vector<int> > >, vector< vector< vector<int> > > > getYs(tree<float>& binaryTree);
+void print_tree(ofstream& file, const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict);
 
 int main(int argc, char **argv) {
   cout << "Online noise contrastive estimation for log-bilinear models with huffman encoded vocabulary: Copyright 2013 Phil Blunsom, " 
@@ -297,11 +298,34 @@ void learn(const variables_map& vm, const ModelData& config) {
 			myfile <<model.label_str(i)<<" "<<perplex_vector(i)<<" "<<wordDepth<<endl;
 		}
 	}
+	else if (vm["variable"].as<string>() == "tree"){
+		print_tree(myfile, binaryTree, binaryTree.begin(), binaryTree.end(),dict);
+	}
 	
 	myfile.close();
 	cerr<<"done writing to "<<vm["file-out"].as<string>()<<endl;
 
 }
+
+void print_tree(ofstream& file, const tree<float>& tr, tree<float>::pre_order_iterator it, tree<float>::pre_order_iterator end,Dict& dict)
+	{
+	if(!tr.is_valid(it)) return;
+	int rootdepth=tr.depth(it);
+	file << "-----" << endl;
+	while(it!=end) {
+		for(int i=0; i<tr.depth(it)-rootdepth; ++i) 
+			file << "  ";
+		if (tr.isLeaf(it)){
+			int index=(*it);
+			file << "<" <<index<<"> "<< dict.Convert(index) << endl << flush;
+		}
+		else{
+			file << (*it) << endl << flush;
+		}
+		++it;
+		}
+	file << "-----" << endl;
+	}
 int getInternalNodeCount(tree<float> & binaryTree){
 	int internalCount=0;
 	tree<float>::breadth_first_queued_iterator it=binaryTree.begin_breadth_first();
