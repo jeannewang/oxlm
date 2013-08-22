@@ -141,6 +141,7 @@ int main(int argc, char **argv) {
 		("tree-out", value<string>()->default_value("tree"), "Write tree to file")
 		("epsilon", value<double>()->default_value(0), "Epsilon for adaptive epsilon tree")
 		("R-in", value<string>(), "filename for file containing R matrix")
+		("Q-in", value<string>(), "filename for file containing Q matrix")
     ;
   options_description config_options, cmdline_options;
   config_options.add(generic);
@@ -1089,7 +1090,28 @@ void learn(const variables_map& vm, const ModelData& config) {
 	model.unigram=unigram;
 	
 	/////////////////////////////////////////////////////////////////
-	
+	//what if i initialize Q
+	if (vm.count("Q-in")){
+
+		ifstream in(vm["Q-in"].as<string>().c_str());
+	  string line, token;
+
+		getline(in, line); //get rid of first line
+	  while (getline(in, line)) {
+	    stringstream line_stream(line);
+
+			line_stream >> token;
+			string wordStr = token;
+			int i=0;
+	    while (line_stream >> token){ 
+				model.Q(dict.Lookup(wordStr),i) = atof(token.c_str());
+				i++;
+			}
+	  }
+	  in.close();
+		
+	}
+	/////////////////////////////////////////////////////////////////
 	//set node value to index into R
 	int internalCount=0;
 	tree<float>::breadth_first_queued_iterator it=model.huffmanTree.begin_breadth_first();
