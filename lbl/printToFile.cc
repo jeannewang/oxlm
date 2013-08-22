@@ -100,6 +100,7 @@ int main(int argc, char **argv) {
 		("model-in,m", value<string>()->default_value("model"),"initial model")
     ("model-out,o", value<string>()->default_value("model"), 
         "base filename of model output files")
+		("unigram-threshold,m", value<float>()->default_value(0),"threshold for unigram to print out Q and R")
 		
     ("iterations", value<int>()->default_value(10), 
         "number of passes through the data")
@@ -242,13 +243,17 @@ void learn(const variables_map& vm, const ModelData& config) {
 	ofstream myfile;
 	myfile.open (vm["file-out"].as<string>().c_str());
 	
+	float thres=vm["unigram-threshold"].as<float>();
+	
 	if (vm["variable"].as<string>() == "Q"){
 		for(int i=0;i<model.labels();i++){
-			myfile <<model.label_str(i)<<" ";
-			for (int j=0;j<model.Q.row(i).size();j++){
-				myfile<<model.Q(i,j)<<" ";
+			if (model.unigram(i) >= thres ){
+				myfile <<model.label_str(i)<<" ";
+				for (int j=0;j<model.Q.row(i).size();j++){
+					myfile<<model.Q(i,j)<<" ";
+				}
+				myfile<<endl;
 			}
-			myfile<<endl;
 		}
 	}
 	else if (vm["variable"].as<string>() == "R"){
