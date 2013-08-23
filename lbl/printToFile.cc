@@ -96,12 +96,13 @@ int main(int argc, char **argv) {
     ("test-set", value<string>(), 
         "corpus of test sentences to be evaluated at each iteration")
 		("file-out", value<string>()->default_value("fileout.txt"), "file out")
-		("tree-in", value<string>()->default_value("../browncluster/output.txt"), "Use tree from this file")
+		("tree-in", value<string>(), "Use tree from this file")
 		("variable", value<string>()->default_value("Q"), "variable types are: Q,R,C,perplexity,perplexityPerWord,tree,perplexityWithGaussianQ")
-		("model-in,m", value<string>()->default_value("model"),"initial model")
+		("model-in,m", value<string>(),"initial model")
     ("model-out,o", value<string>()->default_value("model"), 
         "base filename of model output files")
-		("unigram-threshold,m", value<float>()->default_value(0),"threshold for unigram to print out Q and R")
+		("unigram-threshold", value<float>()->default_value(0),"threshold for unigram to print out Q and R")
+		("lbl-model-in", value<string>(),"lbl model filename")
 		
     ("iterations", value<int>()->default_value(10), 
         "number of passes through the data")
@@ -248,7 +249,26 @@ void learn(const variables_map& vm, const ModelData& config) {
 	
 	float thres=vm["unigram-threshold"].as<float>();
 	
-	if (vm["variable"].as<string>() == "Q"){
+	if (vm.count("lbl-model-in")){
+		LogBiLinearModel lblmodel(config, dict, vm.count("diagonal-contexts"));
+
+		cerr<<"starting to load model "<<vm["lbl-model-in"].as<string>()<<endl;
+    std::ifstream f(vm["lbl-model-in"].as<string>().c_str());
+    boost::archive::text_iarchive ar(f);
+    ar >> lblmodel;
+		cerr<<"done loading in model"<<endl;
+		
+		for(int i=0;i<model.labels();i++){
+			if (lblmodel.unigram(i) >= thres ){
+				myfile <<lblmodel.label_str(i)<<" ";
+				for (int j=0;j<lblmodel.Q.row(i).size();j++){
+					myfile<<lblmodel.Q(i,j)<<" ";
+				}
+				myfile<<endl;
+			}
+		}	
+	}
+	else if (vm["variable"].as<string>() == "Q"){
 		for(int i=0;i<model.labels();i++){
 			if (model.unigram(i) >= thres ){
 				myfile <<model.label_str(i)<<" ";
@@ -318,6 +338,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 		Real pp=perplexity(model, test_corpus, 1);
 		pp = exp(-pp/test_corpus.size());
 		myfile << "Test Perplexity = " << pp<< endl;
+		cout << "Test Perplexity = " << pp<< endl;
 		
 	}
 	else if (vm["variable"].as<string>() == "perplexityWithGaussianQ"){
@@ -332,6 +353,7 @@ void learn(const variables_map& vm, const ModelData& config) {
 		Real pp=perplexity(model, test_corpus, 1);
 		pp = exp(-pp/test_corpus.size());
 		myfile << "Test Perplexity = " << pp<< endl;
+		cout << "Test Perplexity = " << pp<< endl;
 		
 	}
 	
